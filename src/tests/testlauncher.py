@@ -12,6 +12,16 @@ import launcher
 
 
 class LauncherTests(unittest.TestCase):
+    def test_help_is_english_and_describes_opt_in_launch(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(launcher.main(["--help"]), 0)
+        self.assertIn("Usage: codex-status", output.getvalue())
+        self.assertIn("Codex arguments", output.getvalue())
+        self.assertIn("dedicated tmux window", output.getvalue())
+        self.assertIn("HUD", output.getvalue())
+        self.assertNotRegex(output.getvalue(), r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
+
     def test_fresh_launch_preserves_arguments_after_separator(self):
         resume, args = launcher.parse_launch(["--", "--model", "model name", "literal $(no) `no`"])
         self.assertIsNone(resume)
@@ -86,6 +96,9 @@ class LauncherTests(unittest.TestCase):
         with mock.patch("launcher.launch",side_effect=OSError(secret)),contextlib.redirect_stderr(output):
             self.assertEqual(launcher.main(["--",secret]),2)
         self.assertNotIn(secret,output.getvalue())
+        self.assertIn("could not start", output.getvalue())
+        self.assertIn("dedicated tmux window", output.getvalue())
+        self.assertNotRegex(output.getvalue(), r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
 
     def test_launch_uses_new_socket_and_preserves_account_on_attach(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as root:

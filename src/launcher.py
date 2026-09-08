@@ -228,12 +228,12 @@ def main(argv=None):
             from renderer import run_renderer
             return run_renderer(runtime, run_id)
         if argv in (["--help"], ["-h"]):
-            print("사용: codex-status [--resume UUID] [-- Codex 인수]\n선택한 작업만 별도 tmux 창과 HUD로 엽니다. 기본 codex는 그대로 사용합니다.")
+            print("Usage: codex-status [--resume UUID] [-- Codex arguments]\nLaunch this session in a dedicated tmux window with a HUD.")
             return 0
         return launch(*parse_launch(argv))
     except KeyboardInterrupt:
         return 130
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError):
         # Never echo argv, environment values or subprocess exception payloads.
-        print("codex-status: 시작하지 못했습니다. 실행 조건과 전용 tmux 창을 확인하세요.", file=sys.stderr)
+        print("codex-status: could not start. Check the launch requirements and dedicated tmux window.", file=sys.stderr)
         return 2

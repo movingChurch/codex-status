@@ -1,0 +1,23 @@
+{
+  "synthetic": true,
+  "snapshot": {
+    "model": "gpt-5.6-luna",
+    "effort": "high",
+    "cwd": "~/work/my-project",
+    "branch": "main",
+    "context_remaining": 72,
+    "five_hour": {
+      "remaining": 84
+    },
+    "weekly": {
+      "remaining": 63
+    },
+    "state": "live",
+    "activity": "working",
+    "elapsed": 742,
+    "tool": "exec_command",
+    "quota_updated_at": 1788847200
+  },
+  "renderer_columns": 142,
+  "clock": 1788847202
+}

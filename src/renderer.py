@@ -14,9 +14,9 @@ import uuid
 
 COLORS = {"mint": "\x1b[38;5;115m", "blue": "\x1b[38;5;153m", "yellow": "\x1b[38;5;222m", "dim": "\x1b[38;5;250m"}
 RESET = "\x1b[0m"
-STATES = {"pending": "연결 대기", "live": "연결됨", "stale": "갱신 지연", "account-changed": "계정 변경",
-          "error": "확인 실패", "ended": "작업 종료", "hidden": "숨김"}
-ACTIVITIES = {"waiting": "대기", "working": "작업 중", "complete": "완료", "interrupted": "중단"}
+STATES = {"pending": "Connecting", "live": "Connected", "stale": "Stale", "account-changed": "Account changed",
+          "error": "Read failed", "ended": "Ended", "hidden": "Hidden"}
+ACTIVITIES = {"waiting": "Waiting", "working": "Working", "complete": "Complete", "interrupted": "Interrupted"}
 TOOLS = {"exec_command", "write_stdin", "apply_patch", "shell", "shell_command"}
 OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)")
 CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -90,15 +90,15 @@ def quota(label, value, width, reset=None):
     number = "—" if value is None else f"{value:g}%"
     if width < 65:
         return f"{label} {number}"
-    result = f"{label} 잔여 {number}"
+    result = f"{label} {number} left"
     if width >= 110:
         filled = 0 if value is None else int((100 - value) * 6 / 100 + 0.5)
         bar = "—" * 6 if value is None else "━" * filled + "·" * (6 - filled)
-        result = f"{label} 사용 [{bar}] 잔여 {number}"
+        result = f"{label} used [{bar}] {number} left"
     reset_at = timestamp(reset)
     if width >= 180 and reset_at is not None:
         if reset_at <= time.time():
-            result += " 리셋 대기"
+            result += " Reset pending"
         else:
             try:
                 result += " ↻" + dt.datetime.fromtimestamp(reset_at).strftime("%m/%d %H:%M")
@@ -125,12 +125,12 @@ def render(snapshot, width, color=True):
     five = five if isinstance(five, dict) else {}
     week = snapshot.get("weekly")
     week = week if isinstance(week, dict) else {}
-    second = [(quota("문맥", snapshot.get("context_remaining"), width), "mint"),
+    second = [(quota("Ctx", snapshot.get("context_remaining"), width), "mint"),
               (" · " + quota("5h", five.get("remaining"), width, five.get("resets_at")), "blue"),
-              (" · " + quota("주", week.get("remaining"), width, week.get("resets_at")), "yellow")]
-    state = STATES.get(clean(snapshot.get("state")), "확인 대기")
-    activity = ACTIVITIES.get(clean(snapshot.get("activity")), "상태 미확인")
-    quota_reason = " · 한도 범위 미지원" if snapshot.get("quota_scope") == "unsupported" else ""
+              (" · " + quota("Week", week.get("remaining"), width, week.get("resets_at")), "yellow")]
+    state = STATES.get(clean(snapshot.get("state")), "Pending")
+    activity = ACTIVITIES.get(clean(snapshot.get("activity")), "Unknown")
+    quota_reason = " · Unsupported quota" if snapshot.get("quota_scope") == "unsupported" else ""
     third = [(f"{state}{quota_reason} · {activity}", "dim")]
     if width >= 55:
         third.append((" · " + duration(snapshot.get("elapsed")), "dim"))
@@ -140,7 +140,7 @@ def render(snapshot, width, color=True):
     if width >= 85 and observed is not None:
         try:
             stamp = dt.datetime.fromtimestamp(observed).strftime("%m/%d %H:%M:%S")
-            third.append((f" · 한도 관측 {stamp} ({duration(max(0, time.time() - observed))} 전)", "dim"))
+            third.append((f" · Quota observed {stamp} ({duration(max(0, time.time() - observed))} ago)", "dim"))
         except (ValueError, OverflowError, OSError):
             pass
     return [line(parts, width, color) for parts in (first, second, third)]

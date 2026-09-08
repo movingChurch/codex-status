@@ -33,10 +33,26 @@ class RendererTests(unittest.TestCase):
     def test_three_lines_and_usage_vs_remaining(self):
         lines = renderer.render(self.snapshot(), 180, color=False)
         self.assertEqual(len(lines), 3)
-        self.assertIn("잔여 70%", lines[1])
-        self.assertIn("사용", lines[1])
+        self.assertIn("70% left", lines[1])
+        self.assertIn("used", lines[1])
         self.assertIn("gpt-test", lines[0])
-        self.assertIn("작업 중", lines[2])
+        self.assertIn("Working", lines[2])
+
+    def test_owned_labels_are_english_and_explain_remaining_values(self):
+        snapshot = self.snapshot()
+        snapshot["cwd"] = "/work/project"
+        for state in ("pending", "live", "stale", "account-changed", "error", "ended", "hidden", "unknown"):
+            snapshot["state"] = state
+            text = "\n".join(renderer.render(snapshot, 220, color=False))
+            self.assertNotRegex(text, r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
+            self.assertIn("Working", text)
+            self.assertIn("70% left", text)
+            self.assertIn("Quota observed", text)
+            self.assertIn("ago)", text)
+        snapshot["state"] = "live"
+        rows = renderer.render(snapshot, 40, color=False)
+        self.assertEqual(rows[1], "Ctx 70% · 5h 55% · Week 20%")
+        self.assertIn("Connected", rows[2])
 
     def test_control_sequences_and_bidi_cannot_escape(self):
         snapshot = self.snapshot()
@@ -58,17 +74,17 @@ class RendererTests(unittest.TestCase):
 
     def test_narrow_retains_quota_and_state_before_location(self):
         lines = renderer.render(self.snapshot(), 40, color=False)
-        self.assertIn("문맥", lines[1])
+        self.assertIn("Ctx", lines[1])
         self.assertIn("5h", lines[1])
-        self.assertIn("주", lines[1])
-        self.assertIn("작업 중", lines[2])
+        self.assertIn("Week", lines[1])
+        self.assertIn("Working", lines[2])
 
     def test_invalid_numbers_stay_unknown(self):
         for value in (None, True, float("nan"), float("inf"), -1, 101, "50"):
             snapshot = self.snapshot()
             snapshot.update(context_remaining=value, five_hour={"remaining":value}, weekly=None)
             row = renderer.render(snapshot, 180, color=False)[1]
-            self.assertNotIn("잔여 0%", row)
+            self.assertNotIn("0% left", row)
             self.assertNotIn("nan", row)
             self.assertNotIn("inf", row)
             self.assertIn("—", row)
@@ -77,22 +93,22 @@ class RendererTests(unittest.TestCase):
         snapshot = self.snapshot()
         snapshot["state"] = "stale"
         text = "\n".join(renderer.render(snapshot, 180, color=False))
-        self.assertIn("갱신 지연", text)
-        self.assertIn("작업 중", text)
-        self.assertIn("관측", text)
+        self.assertIn("Stale", text)
+        self.assertIn("Working", text)
+        self.assertIn("observed", text)
 
     def test_past_reset_does_not_replenish(self):
         snapshot = self.snapshot()
         snapshot["five_hour"] = {"remaining":12, "resets_at":1}
         text = "\n".join(renderer.render(snapshot, 220, color=False))
-        self.assertIn("잔여 12%", text)
-        self.assertIn("리셋 대기", text)
+        self.assertIn("12% left", text)
+        self.assertIn("Reset pending", text)
 
     def test_account_change_reason_is_visible(self):
         snapshot = self.snapshot()
         snapshot.update(state="account-changed", context_remaining=None, five_hour=None, weekly=None)
         text = "\n".join(renderer.render(snapshot, 80, color=False))
-        self.assertIn("계정 변경", text)
+        self.assertIn("Account changed", text)
 
     def test_unsupported_quota_scope_has_reason_in_state_row(self):
         snapshot = self.snapshot()
@@ -100,7 +116,7 @@ class RendererTests(unittest.TestCase):
         for width in (40, 80, 180):
             lines = renderer.render(snapshot, width, color=False)
             self.assertEqual(len(lines), 3)
-            self.assertIn("한도 범위 미지원", lines[2])
+            self.assertIn("Unsupported quota", lines[2])
 
     def test_only_known_tool_names_are_rendered(self):
         snapshot = self.snapshot()
@@ -112,7 +128,7 @@ class RendererTests(unittest.TestCase):
         snapshot.update(state=[],activity={},tool=["exec_command"],elapsed=10**500,context_remaining=10**500)
         lines=renderer.render(snapshot,80,False)
         self.assertEqual(len(lines),3)
-        self.assertIn("확인 대기",lines[2])
+        self.assertIn("Pending",lines[2])
 
     def drive_socket(self, record):
         with tempfile.TemporaryDirectory() as root:

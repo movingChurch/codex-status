@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.0-alpha.2 — 2026-09-08
+
+- English-only HUD labels, help, and startup errors
+- Product preview from the actual renderer with synthetic data
+- Reader-focused README with quick start and creator resources
+
+Session collection, quota sources, and supported Codex version remain unchanged.
+
 ## v0.1.0-alpha.1 — 2026-09-08
 
 Initial experimental source release for macOS and Codex CLI 0.153.4.
