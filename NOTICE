@@ -1,0 +1,30 @@
+codex-status
+
+OpenAI Codex
+Copyright 2025 OpenAI
+
+The context-window calculation in src/events.py (_context) is adapted from
+OpenAI Codex, tag rust-v0.153.4, codex-rs/protocol/src/protocol.rs,
+TokenUsage.percent_of_context_window_remaining.
+Source: https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/protocol/src/protocol.rs
+Licensed under the Apache License, Version 2.0; see LICENSES/Apache-2.0.txt.
+Modifications: Python translation, explicit input validation, and
+Rust-compatible rounding. Other event parsing and state handling were written
+for codex-status against the published protocol contract.
+
+Apple Darwin ABI declarations
+Copyright (c) 2005-2021 Apple Inc. All rights reserved.
+
+src/darwin_abi.py contains selected declarations adapted from Apple's
+sys/proc_info.h, distributed under the Apple Public Source License 2.0.
+Source reference: https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/sys/proc_info.h
+The implementation was checked against the local macOS SDK's ABI.
+Modifications dated 2026-09-08: translation to Python ctypes, shortened field
+names, and measured layout checks. The original copyright, license reference,
+and disclaimer are retained in that source file.
+The complete license is in LICENSES/APPLE-APSL-2.0.txt. The corresponding
+modified source is provided as src/darwin_abi.py in this distribution.
+
+The Apple-derived source file retains its APSL-2.0 terms. The project's
+Apache-2.0 license does not replace those terms. These notices identify source
+provenance and do not imply endorsement by OpenAI or Apple.
