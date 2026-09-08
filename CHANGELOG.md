@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add clickable folders, Git branches, quota reset times, and session logs
+
 - Read startup quota through the official Codex account API with shared caching
 - Distinguish first-message readiness from a connected session
 - Match Claude-style usage sliders, reset countdowns, and observed cache metrics

@@ -60,6 +60,17 @@ Bars and percentages both show **used** capacity. The ten-cell sliders and three
 Account quota can appear before the first prompt. Until the CLI creates its session log, the HUD says **Ready — send a message to start session tracking**. Missing quota windows show `n/a`; they do not mean zero usage. Codex may report a weekly window without a five-hour window.
 
 
+## Clickable fields
+
+The colored HUD emits OSC 8 terminal hyperlinks:
+
+- **Directory** opens the working folder.
+- **Branch** opens the branch on the Git remote's website.
+- **5H / 7D and reset countdowns** open the Codex usage dashboard.
+- **Elapsed** opens the exact session log when one is available.
+
+In Orca on macOS, hold **Cmd** and click. Other terminals may use a different modifier key. Plain-text output keeps the labels without terminal escape sequences. The collector caches the Git origin lookup for 60 seconds and never places embedded Git credentials in a link.
+
 ## Everyday use
 
 Resume a specific session or pass Codex options after `--`:

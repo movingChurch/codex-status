@@ -10,6 +10,7 @@ import sys
 import time
 import unicodedata
 import uuid
+from urllib.parse import urlsplit
 
 
 COLORS = {"model": "\x1b[0;1;38;2;58;207;137m", "mint": "\x1b[0;38;2;0;181;113m",
@@ -38,9 +39,29 @@ def cell_width(character):
     return 2 if unicodedata.east_asian_width(character) in "WF" else 1
 
 
+def safe_link_url(value):
+    """Accept terminal link targets without repairing untrusted input."""
+    if not isinstance(value, str) or not value or len(value) > 4096:
+        return None
+    if any(char.isspace() or char == "\\" or unicodedata.category(char).startswith("C") for char in value):
+        return None
+    try:
+        parsed = urlsplit(value)
+        if parsed.username is not None or parsed.password is not None:
+            return None
+        if value.startswith("https://") and parsed.hostname and parsed.port != 0:
+            return value
+        if value.startswith("file://") and parsed.netloc in ("", "localhost") and parsed.path.startswith("/"):
+            return value
+    except ValueError:
+        pass
+    return None
+
+
 def line(segments, width, color):
     result, used = [], 0
-    for text, tint in segments:
+    for segment in segments:
+        text, tint = segment[:2]
         chunk = []
         for char in clean(text):
             size = cell_width(char)
@@ -51,9 +72,14 @@ def line(segments, width, color):
             chunk.append(char)
             used += size
         if chunk:
+            url = safe_link_url(segment[2]) if color and len(segment) > 2 else None
             if color:
                 result.append(COLORS[tint])
+            if url:
+                result.append("\x1b]8;;" + url + "\x1b\\")
             result.append("".join(chunk))
+            if url:
+                result.append("\x1b]8;;\x1b\\")
         if used >= width:
             break
     if color and result:
@@ -130,7 +156,7 @@ def reset_countdown(value):
 
 
 def segments_width(segments):
-    return sum(cell_width(char) for text, _ in segments for char in clean(text))
+    return sum(cell_width(char) for segment in segments for char in clean(segment[0]))
 
 
 def capacity_row(snapshot, width):
@@ -156,10 +182,10 @@ def capacity_row(snapshot, width):
             value = "n/a" if quota_used is None else f"{quota_used:.1f}%"
             if bars and quota_used is not None:
                 value = slider(quota_used) + " " + value
-            parts.extend([(" │ " + label + " ", "label"), (value, tint)])
+            parts.extend([(" │ ", "label"), (label, "label", snapshot.get("usage_url")), (" ", "label"), (value, tint)])
             countdown = reset_countdown(resets_at) if timers and quota_used is not None else None
             if countdown:
-                parts.extend([(" ↻ ", "label"), (countdown, "dim")])
+                parts.extend([(" ↻ ", "label"), (countdown, "dim", snapshot.get("usage_url"))])
         if segments_width(parts) <= width:
             return parts
     return parts
@@ -195,7 +221,7 @@ def activity_row(snapshot, width):
         message = error if error in allowed_errors else "unavailable"
         append_if_fits(parts, [(" │ Quota " + message, "dim")], width)
     if state_key != "ready" and snapshot.get("elapsed") is not None:
-        append_if_fits(parts, [(" │ Elapsed ", "label"), (duration(snapshot.get("elapsed")), "dim")], width)
+        append_if_fits(parts, [(" │ Elapsed ", "label"), (duration(snapshot.get("elapsed")), "dim", snapshot.get("session_url"))], width)
     cached = token_count(snapshot.get("cached_tokens"))
     inputs = token_count(snapshot.get("input_tokens"))
     if cached is not None and inputs is not None and cached <= inputs:
@@ -209,7 +235,8 @@ def activity_row(snapshot, width):
     if observed is not None:
         try:
             stamp = dt.datetime.fromtimestamp(observed).strftime("%m/%d %H:%M:%S")
-            addition = [(f" │ Quota observed {stamp} ({duration(max(0, time.time() - observed))} ago)", "dim")]
+            addition = [(" │ Quota observed ", "dim"), (stamp, "dim", snapshot.get("usage_url")),
+                        (f" ({duration(max(0, time.time() - observed))} ago)", "dim")]
             append_if_fits(parts, addition, width)
         except (ValueError, OverflowError, OSError):
             pass
@@ -230,9 +257,9 @@ def render(snapshot, width, color=True):
         first.extend([(" Effort ", "label"), (effort, "mint")])
     if width >= 65 and cwd not in ("", "—"):
         location = "/".join(cwd.rstrip("/").split("/")[-2:]) or "/"
-        first.extend([(" │ Directory ", "label"), (location, "dim")])
+        first.extend([(" │ Directory ", "label"), (location, "dim", snapshot.get("directory_url"))])
     if width >= 50 and branch not in ("", "—"):
-        first.extend([(" Branch ", "label"), (line([(branch, "mint")], 26, False), "mint")])
+        first.extend([(" Branch ", "label"), (line([(branch, "mint")], 26, False), "mint", snapshot.get("branch_url"))])
     return [line(parts, width, color) for parts in (first, capacity_row(snapshot, width), activity_row(snapshot, width))]
 
 

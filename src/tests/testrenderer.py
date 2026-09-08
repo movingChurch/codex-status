@@ -19,11 +19,104 @@ import renderer
 
 
 def cells(text):
+    text = re.sub(r"\x1b\]8;;[^\x1b]*\x1b\\", "", text)
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
     return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
 
 
 class RendererTests(unittest.TestCase):
+    def linked_snapshot(self):
+        snapshot = self.snapshot()
+        snapshot.update(directory_url="file:///work/project%20files", branch_url="https://github.com/example/project/tree/main",
+                        session_url="file:///work/session.jsonl", usage_url="https://chatgpt.com/codex/settings/usage")
+        return snapshot
+
+    def links(self, text):
+        return re.findall(r"\x1b\]8;;([^\x1b]+)\x1b\\(.*?)\x1b\]8;;\x1b\\", text)
+
+    def test_links_target_directory_branch_quota_resets_and_session(self):
+        snapshot = self.linked_snapshot()
+        snapshot["five_hour"]["resets_at"] = 13600
+        snapshot["weekly"]["resets_at"] = 100000
+        with mock.patch("renderer.time.time", return_value=10000):
+            rows = renderer.render(snapshot, 500, True)
+        self.assertEqual(self.links(rows[0]), [(snapshot["directory_url"], "work/한글 작업"), (snapshot["branch_url"], "main")])
+        self.assertEqual(self.links(rows[1]), [(snapshot["usage_url"], label) for label in ("5H", "1hr", "7D", "1d 1hr")])
+        self.assertEqual(self.links(rows[2])[0], (snapshot["session_url"], "1:25"))
+        self.assertEqual(self.links(rows[2])[1][0], snapshot["usage_url"])
+        self.assertRegex(self.links(rows[2])[1][1], r"\d\d/\d\d \d\d:\d\d:\d\d")
+
+    def test_plain_output_and_visible_width_ignore_links(self):
+        snapshot = self.linked_snapshot()
+        plain_snapshot = self.snapshot()
+        with mock.patch("renderer.time.time", return_value=10000):
+            for width in (1, 12, 40, 65, 80, 120, 220, 500):
+                plain = renderer.render(snapshot, width, False)
+                self.assertEqual(plain, renderer.render(plain_snapshot, width, False))
+                self.assertNotIn("\x1b", "\n".join(plain))
+                styled = renderer.render(snapshot, width, True)
+                self.assertEqual([cells(row) for row in styled], [cells(row) for row in plain])
+                self.assertTrue(all(cells(row) <= width for row in styled))
+                for row in styled:
+                    self.assertEqual(row.count("\x1b]8;;"), 2 * len(self.links(row)))
+
+    def test_truncation_closes_links_before_following_segments(self):
+        url = "https://example.com/branch?view=tree#code"
+        for width, visible in ((0, ""), (1, "!"), (2, "한"), (3, "한!"), (4, "한글"), (5, "한글!")):
+            with self.subTest(width=width):
+                row = renderer.line([("한글", "mint", url), ("!", "dim")], width, True)
+                self.assertEqual(renderer.clean(row), visible)
+                self.assertLessEqual(cells(row), width)
+                self.assertEqual(row.count("\x1b]8;;"), 2 * len(self.links(row)))
+                for target, label in self.links(row):
+                    self.assertEqual(target, url)
+                    self.assertNotIn("!", label)
+
+    def test_hostile_or_unsupported_urls_never_create_terminal_links(self):
+        invalid = (None, {}, "http://example.com", "javascript:alert(1)", "//example.com", "https://",
+                   "https://user:password@example.com", "file://user@localhost/path", "file://remote-host/path", "file://localhost:80/path",
+                   "file://localhost", "https://example.com:bad/path",
+                   "https://example.com/\x1b]52;c;private\x07", "https://example.com/\npath", "https://example.com/\u202epath",
+                   "https://example.com/\x9cpath", "https://example.com/with space", "https://example.com\\@evil.test", "https://example.com/" + "x" * 4096)
+        for url in invalid:
+            with self.subTest(url_type=type(url).__name__):
+                snapshot = self.snapshot()
+                snapshot.update({field: url for field in ("directory_url", "branch_url", "session_url", "usage_url")})
+                rows = renderer.render(snapshot, 500, True)
+                self.assertNotIn("\x1b]", "\n".join(rows))
+                self.assertIn("Directory", rows[0])
+
+    def test_local_file_and_https_targets_preserve_escaped_paths(self):
+        for url in ("file:///work/project%20files/session.jsonl", "file://localhost/work/%ED%95%9C%EA%B8%80",
+                    "https://example.com:443/tree/feature%2Fhud?view=tree#code"):
+            row = renderer.line([("Open", "mint", url)], 4, True)
+            self.assertEqual(self.links(row), [(url, "Open")])
+            self.assertEqual(cells(row), 4)
+
+    def test_long_branch_label_truncates_without_truncating_target(self):
+        snapshot = self.linked_snapshot()
+        snapshot["branch"] = "feature/" + "long-name-" * 10
+        snapshot["branch_url"] = "https://example.com/tree/" + snapshot["branch"]
+        row = renderer.render(snapshot, 220, True)[0]
+        self.assertEqual(self.links(row)[1], (snapshot["branch_url"], snapshot["branch"][:26]))
+
+    def test_ready_links_available_weekly_quota_without_claiming_connection(self):
+        snapshot = self.linked_snapshot()
+        snapshot.update(state="ready", model=None, effort=None, session_id=None, session_url=None, five_hour=None)
+        rows = renderer.render(snapshot, 220, True)
+        self.assertIn((snapshot["usage_url"], "5H"), self.links(rows[1]))
+        self.assertIn("5H n/a", renderer.clean(rows[1]))
+        self.assertIn("Ready · Send a message", rows[2])
+        self.assertNotIn("Connected", "\n".join(rows))
+        self.assertNotIn("Elapsed", rows[2])
+
+    def test_incoming_text_cannot_inject_links_even_with_valid_target(self):
+        snapshot = self.linked_snapshot()
+        snapshot["branch"] = "\x1b]8;;https://evil.test\x1b\\main\x1b]8;;\x1b\\"
+        row = renderer.render(snapshot, 220, True)[0]
+        self.assertNotIn("evil.test", row)
+        self.assertIn((snapshot["branch_url"], "main"), self.links(row))
+
     def snapshot(self):
         return dict(state="live", model="gpt-test", effort="high", cwd="/work/한글 작업", branch="main",
                     session_id="11111111-2222-4333-8444-555555555555", context_remaining=70, context_used=60000, context_window=200000, input_tokens=10000, cached_tokens=4000, five_hour={"remaining":55, "resets_at":4102444800},

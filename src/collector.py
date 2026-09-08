@@ -207,6 +207,8 @@ class Collector:
         self.runtime = validate_runtime(runtime)
         from account import AccountCache
         self.accounts = AccountCache()
+        from links import LinkCache
+        self.links = LinkCache()
         self.clients = {}
         self.runs = {}
         self.branches = BranchCache()
@@ -300,6 +302,7 @@ class Collector:
         now = time.monotonic()
         self.metrics['ticks'] += 1
         self.metrics['account_queries'] = self.accounts.queries
+        self.metrics['git_queries'] = self.links.queries
         if now - self.visibility_at >= INTERVAL:
             sockets = {run.meta['tmux_socket'] for run in self.runs.values()}
             results = await asyncio.gather(*(asyncio.to_thread(pane_visibility, s) for s in sockets))
@@ -365,6 +368,7 @@ class Collector:
                         snapshot['quota_error'] = account['quota_error']
 
                 snapshot['branch'] = self.branches.branch(meta['cwd'])
+                snapshot.update(self.links.snapshot(meta['cwd'], snapshot['branch'], run.path))
                 snapshot['elapsed'] = max(0, int((time.time() - meta.get('launched_at', time.time())) // INTERVAL) * int(INTERVAL))
                 snapshot['state'] = 'live' if run.reader else 'ready'
                 stamp = snapshot.get('quota_updated_at')
@@ -387,6 +391,7 @@ class Collector:
                     await asyncio.sleep(1)
         finally:
             await self.accounts.close()
+            await self.links.close()
             for writer in list(self.clients):
                 writer.close()
             server.close()

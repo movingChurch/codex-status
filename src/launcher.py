@@ -175,6 +175,9 @@ def launch(resume, args):
     try:
         if not re.fullmatch(r"%\d+", codex_pane):
             raise ValueError("Codex pane identity unavailable")
+        # This dedicated display server forwards OSC 8 links to capable clients.
+        subprocess.run(base + ["set-option", "-as", "terminal-features", ",*:hyperlinks"],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
         renderer_command = shlex.join([sys.executable, str(entry), "__render", str(runtime), run])
         result = subprocess.run(base + ["split-window", "-v", "-d", "-l", "4", "-t", codex_pane,
                                        "-P", "-F", "#{pane_id}", renderer_command], capture_output=True, text=True, timeout=5, check=True)
