@@ -3,3 +3,7 @@ __pycache__/
 *.py[cod]
 .DS_Store
 benchmark-result.json
+dist/
+# Kept locally only while pre-migration sessions finish.
+/src/
+/install.py

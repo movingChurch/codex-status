@@ -1,9 +1,15 @@
 # Contributing
 
-Use Python 3.14 on macOS with tmux and the Apple Command Line Tools. Build with `python3 src/build-client.py`, then run `python3 -m unittest discover -s tests -v` from `src/`.
+Use Go 1.25 or later and macOS with tmux for integration tests.
 
-Keep the launcher, collector, binding, event parser, and renderer responsibilities separate. Changes to session matching must reject ambiguous fixtures. Add behavioral tests for new data contracts and lifecycle changes. Use synthetic records; never commit real rollout logs, credentials, or user paths.
+```sh
+go test -race ./...
+go vet ./...
+./scripts/build-release.sh
+```
 
-Describe what changed and how you checked it. Performance claims need a reproducible workload and a clear process scope. CLI version support requires source and fixture evidence; changing the version string alone is not enough.
+Keep tests synthetic. Never submit authentication files, raw conversations, account identifiers, or private runtime metadata. Report your OS, architecture, tmux, Codex, and Codex Status versions with reproduction steps.
 
-Use GitHub issues for reproducible bugs and feature proposals. Include versions and expected versus actual behavior, with sensitive data removed. Pull requests are welcome. Contributions use the repository license.
+Maintain the existing display, exact-process session binding, bounded record reads, account separation, terminal sanitization, and owned-pane lifecycle. Changes to those contracts need behavioral tests. Run metadata and collector IPC belong to the user's private runtime directory.
+
+The Go executable contains the launcher, collector, and display client. Release archives must run without Python, a C compiler, or a Go toolchain. Do not reintroduce an interpreter fallback. Keep platform-specific process inspection in the corresponding telemetry files.

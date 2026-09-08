@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0-alpha.1
+
+- Replace the Python launcher, collector, and display stack with one Go executable.
+- Build macOS arm64 and amd64 archives with checksums; runtime installation needs no language toolchain.
+- Capture mouse-wheel input as tmux scroll history and hide the default tmux status bar.
+- Preserve session binding, bounded telemetry, startup quota, display links, and owned-pane cleanup.
+- Use a separate Go collector runtime so existing Python sessions can finish normally.
+
+
 ## Unreleased
 
 - Add clickable folders, Git branches, quota reset times, and session logs
