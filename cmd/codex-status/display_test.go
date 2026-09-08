@@ -31,7 +31,19 @@ func TestOwnedTmuxScrollSettings(t *testing.T) {
 	if got := call("show-options", "-gv", "status"); got != "off" {
 		t.Errorf("default status bar must be hidden, got %s", got)
 	}
-	binding := call("list-keys", "-T", "root", "WheelUpPane")
+	// Query the whole table: tmux versions differ in named mouse-key filtering.
+	binding := ""
+	for _, line := range strings.Split(call("list-keys", "-T", "root"), "\n") {
+		for _, field := range strings.Fields(line) {
+			if field == "WheelUpPane" {
+				binding = line
+				break
+			}
+		}
+	}
+	if binding == "" {
+		t.Fatal("WheelUpPane binding is missing from the root table")
+	}
 	if strings.Contains(binding, "alternate_on") || !strings.Contains(binding, "copy-mode") {
 		t.Errorf("wheel must scroll pane history even in alternate screen: %s", binding)
 	}
