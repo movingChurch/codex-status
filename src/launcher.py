@@ -107,7 +107,7 @@ def run_codex(options):
     meta = {"v": 1, "id": options.run, "home": str(Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").resolve()),
             "cwd": str(Path.cwd().resolve()), "tmux_socket": str(socket_path), "codex_pane": pane,
             "hud_pane": paired, "expected_session": options.resume, "executable": str(Path(options.codex).resolve()),
-            "launched_at": time.time()}
+            "launched_at": time.time(), "account_quota": True}
     command = [meta["executable"]]
     if options.resume:
         command += ["resume", options.resume]
@@ -187,6 +187,11 @@ def launch(resume, args):
                        stderr=subprocess.DEVNULL, timeout=3, check=True)
         subprocess.run(base + ["wait-for", "-S", "ready-" + run], stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, timeout=3, check=True)
+        # Keep the compact HUD height when the first client attaches or resizes.
+        for event in ("client-attached", "client-resized"):
+            subprocess.run(base + ["set-hook", "-t", "codex", event,
+                f"resize-pane -t {hud_pane} -y 4"], check=True,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
         signaled = True
         attach_environment = dict(os.environ)
         attach_environment.pop("TMUX", None)

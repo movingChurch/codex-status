@@ -205,6 +205,8 @@ class Run:
 class Collector:
     def __init__(self, runtime):
         self.runtime = validate_runtime(runtime)
+        from account import AccountCache
+        self.accounts = AccountCache()
         self.clients = {}
         self.runs = {}
         self.branches = BranchCache()
@@ -278,7 +280,7 @@ class Collector:
         if client is not None and client.get('format') == 'ansi':
             from renderer import render
             lines = render(snapshot, client.get('width', 80))
-            encoded = ('\x1b[?25l\x1b[H' + '\r\n'.join('\x1b[2K' + line for line in lines)).encode()
+            encoded = ('\x1b[?25l\x1b[H' + '\r\n'.join('\x1b[2K' + line for line in lines) + '\x1b[J').encode()
         else:
             encoded = payload + b'\n'
         if client is not None and client['last'] == encoded:
@@ -297,6 +299,7 @@ class Collector:
         from events import SessionReader
         now = time.monotonic()
         self.metrics['ticks'] += 1
+        self.metrics['account_queries'] = self.accounts.queries
         if now - self.visibility_at >= INTERVAL:
             sockets = {run.meta['tmux_socket'] for run in self.runs.values()}
             results = await asyncio.gather(*(asyncio.to_thread(pane_visibility, s) for s in sockets))
@@ -354,11 +357,18 @@ class Collector:
                         run.last_binding = 0
                         run.snapshot = {}
                 snapshot.update(run.snapshot)
+                if meta.get('executable') and meta.get('account_quota', True):
+                    account = self.accounts.snapshot(meta['home'], meta['executable'], epoch)
+                    if account.get('quota_updated_at', 0) > (snapshot.get('quota_updated_at') or 0):
+                        snapshot.update(account)
+                    elif account.get('quota_error'):
+                        snapshot['quota_error'] = account['quota_error']
+
                 snapshot['branch'] = self.branches.branch(meta['cwd'])
                 snapshot['elapsed'] = max(0, int((time.time() - meta.get('launched_at', time.time())) // INTERVAL) * int(INTERVAL))
-                snapshot['state'] = 'live' if run.reader else 'pending'
+                snapshot['state'] = 'live' if run.reader else 'ready'
                 stamp = snapshot.get('quota_updated_at')
-                if isinstance(stamp, (int, float)) and time.time() - stamp > INTERVAL:
+                if run.reader and isinstance(stamp, (int, float)) and time.time() - stamp > 180:
                     snapshot['state'] = 'stale'
                 if run.account_changed:
                     snapshot['state'] = 'account-changed'
@@ -376,6 +386,7 @@ class Collector:
                         break
                     await asyncio.sleep(1)
         finally:
+            await self.accounts.close()
             for writer in list(self.clients):
                 writer.close()
             server.close()

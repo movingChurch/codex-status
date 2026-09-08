@@ -36,6 +36,13 @@ class EventTests(unittest.TestCase):
         self.event("token_count", **self.usage())
         self.assertEqual(SessionReader(self.path, ROOT).read().get("context_remaining"), 50)
 
+    def test_observed_context_and_cache_metrics(self):
+        self.event("token_count", info=dict(model_context_window=200000,
+            last_token_usage=dict(total_tokens=60000, input_tokens=50000, cached_input_tokens=40000)))
+        data = SessionReader(self.path, ROOT).read()
+        self.assertEqual([data[k] for k in ("context_used", "context_window", "input_tokens", "cached_tokens")],
+                         [60000, 200000, 50000, 40000])
+
     def test_rust_half_rounding_and_invalid_values(self):
         self.event("token_count", info=dict(model_context_window=12200, last_token_usage=dict(total_tokens=12003)))
         reader = SessionReader(self.path, ROOT)

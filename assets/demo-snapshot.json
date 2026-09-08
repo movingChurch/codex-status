@@ -7,17 +7,24 @@
     "branch": "main",
     "context_remaining": 72,
     "five_hour": {
-      "remaining": 84
+      "remaining": 84,
+      "resets_at": 1788854402
     },
     "weekly": {
-      "remaining": 63
+      "remaining": 63,
+      "resets_at": 1789192802
     },
     "state": "live",
     "activity": "working",
     "elapsed": 742,
     "tool": "exec_command",
-    "quota_updated_at": 1788847200
+    "quota_updated_at": 1788847200,
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "context_used": 68000,
+    "context_window": 212000,
+    "input_tokens": 66000,
+    "cached_tokens": 62000
   },
-  "renderer_columns": 142,
+  "renderer_columns": 110,
   "clock": 1788847202
 }

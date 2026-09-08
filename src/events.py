@@ -101,7 +101,8 @@ class SessionReader:
         return dict(model=None, effort=None, context_remaining=None,
                     five_hour=None, weekly=None, activity="waiting", tool=None,
                     updated_at=None, quota_updated_at=None,
-                    session_id=self.session_id, quota_scope=None)
+                    session_id=self.session_id, quota_scope=None,
+                    context_used=None, context_window=None, input_tokens=None, cached_tokens=None)
 
     def _invalidate(self):
         self.invalidated = True
@@ -226,7 +227,16 @@ class SessionReader:
     def _event(self, payload, stamp):
         kind = payload.get("type")
         if kind == "token_count":
-            self._state["context_remaining"] = _context(payload.get("info"))
+            info = payload.get("info")
+            self._state["context_remaining"] = _context(info)
+            if isinstance(info, dict):
+                last = info.get("last_token_usage")
+                window = info.get("model_context_window")
+                self._state["context_window"] = window if _integer(window) else None
+                if isinstance(last, dict):
+                    for target, source in (("context_used", "total_tokens"), ("input_tokens", "input_tokens"), ("cached_tokens", "cached_input_tokens")):
+                        value = last.get(source)
+                        self._state[target] = value if _integer(value) else None
             self._quota(payload.get("rate_limits"), stamp)
             return True
         if kind == "thread_settings_applied":

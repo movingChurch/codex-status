@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Read startup quota through the official Codex account API with shared caching
+- Distinguish first-message readiness from a connected session
+- Match Claude-style usage sliders, reset countdowns, and observed cache metrics
+- Keep the HUD compact when a terminal attaches or resizes
+
+
 ## v0.1.0-alpha.2 — 2026-09-08
 
 - English-only HUD labels, help, and startup errors

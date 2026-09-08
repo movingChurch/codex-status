@@ -26,19 +26,19 @@ def cells(text):
 class RendererTests(unittest.TestCase):
     def snapshot(self):
         return dict(state="live", model="gpt-test", effort="high", cwd="/work/한글 작업", branch="main",
-                    context_remaining=70, five_hour={"remaining":55, "resets_at":4102444800},
+                    session_id="11111111-2222-4333-8444-555555555555", context_remaining=70, context_used=60000, context_window=200000, input_tokens=10000, cached_tokens=4000, five_hour={"remaining":55, "resets_at":4102444800},
                     weekly={"remaining":20, "resets_at":4102444800}, elapsed=85, activity="working",
                     tool="exec_command", updated_at="2026-09-08T00:00:00Z", quota_updated_at="2026-09-08T00:00:00Z")
 
     def test_three_lines_and_usage_vs_remaining(self):
         lines = renderer.render(self.snapshot(), 180, color=False)
         self.assertEqual(len(lines), 3)
-        self.assertIn("70% left", lines[1])
-        self.assertIn("used", lines[1])
+        self.assertIn("60k/200k (30%)", lines[1])
+        self.assertIn("▓▓▓░░░░░░░", lines[1])
         self.assertIn("gpt-test", lines[0])
         self.assertIn("Working", lines[2])
 
-    def test_owned_labels_are_english_and_explain_remaining_values(self):
+    def test_owned_labels_are_english_and_use_claude_used_percentages(self):
         snapshot = self.snapshot()
         snapshot["cwd"] = "/work/project"
         for state in ("pending", "live", "stale", "account-changed", "error", "ended", "hidden", "unknown"):
@@ -46,13 +46,62 @@ class RendererTests(unittest.TestCase):
             text = "\n".join(renderer.render(snapshot, 220, color=False))
             self.assertNotRegex(text, r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
             self.assertIn("Working", text)
-            self.assertIn("70% left", text)
+            self.assertIn("60k/200k (30%)", text)
             self.assertIn("Quota observed", text)
             self.assertIn("ago)", text)
         snapshot["state"] = "live"
         rows = renderer.render(snapshot, 40, color=False)
-        self.assertEqual(rows[1], "Ctx 70% · 5h 55% · Week 20%")
+        self.assertEqual(rows[1], "Ctx 30% │ 5H 45.0% │ 7D 80.0%")
         self.assertIn("Connected", rows[2])
+
+    def test_capacity_row_has_ten_cell_used_sliders_and_countdowns(self):
+        snapshot = self.snapshot()
+        snapshot["five_hour"]["resets_at"] = 13600
+        snapshot["weekly"]["resets_at"] = 10000 + 90000
+        with mock.patch("renderer.time.time", return_value=10000):
+            row = renderer.render(snapshot, 220, color=False)[1]
+        self.assertIn("Context ▓▓▓░░░░░░░ 60k/200k (30%)", row)
+        self.assertIn("5H ▓▓▓▓▓░░░░░ 45.0% ↻ 1hr", row)
+        self.assertIn("7D ▓▓▓▓▓▓▓▓░░ 80.0% ↻ 1d 1hr", row)
+        self.assertNotIn("left", row)
+
+    def test_ready_has_account_quota_without_claiming_session_connection(self):
+        snapshot = dict(state="ready", model=None, effort=None, cwd="/work/project", branch="main",
+                        session_id=None, context_remaining=None, five_hour=None,
+                        weekly={"remaining":13}, quota_source="account", activity="waiting")
+        rows = renderer.render(snapshot, 160, color=False)
+        self.assertTrue(rows[0].startswith("Codex"))
+        self.assertNotIn("Effort", rows[0])
+        self.assertIn("5H n/a", rows[1])
+        self.assertIn("87.0%", rows[1])
+        self.assertIn("Ready · Send a message to start session tracking", rows[2])
+        self.assertNotIn("Connected", "\n".join(rows))
+
+    def test_unbound_live_state_never_claims_connected(self):
+        snapshot=self.snapshot()
+        snapshot["session_id"]=None
+        self.assertNotIn("Connected", "\n".join(renderer.render(snapshot,160,False)))
+
+    def test_supported_cache_metrics_use_cached_input_share(self):
+        row=renderer.render(self.snapshot(),220,False)[2]
+        self.assertIn("Cached 4k",row)
+        self.assertIn("Hit rate 40.0%",row)
+        self.assertNotIn("Cost",row)
+        self.assertNotIn("Compact",row)
+
+    def test_account_error_is_visible_without_raw_detail(self):
+        snapshot=dict(state="ready", quota_error="rate-limited", activity="waiting")
+        row=renderer.render(snapshot,180,False)[2]
+        self.assertIn("Quota rate-limited",row)
+        snapshot["quota_error"]="private arbitrary error contents"
+        self.assertNotIn("private",renderer.render(snapshot,180,False)[2])
+
+    def test_palette_uses_installed_claude_truecolors(self):
+        rows=renderer.render(self.snapshot(),220,True)
+        self.assertIn("38;2;58;207;137",rows[0])
+        self.assertIn("38;2;0;181;113",rows[1])
+        self.assertIn("38;2;72;166;255",rows[1])
+        self.assertIn("38;2;229;194;38",rows[1])
 
     def test_control_sequences_and_bidi_cannot_escape(self):
         snapshot = self.snapshot()
@@ -75,8 +124,8 @@ class RendererTests(unittest.TestCase):
     def test_narrow_retains_quota_and_state_before_location(self):
         lines = renderer.render(self.snapshot(), 40, color=False)
         self.assertIn("Ctx", lines[1])
-        self.assertIn("5h", lines[1])
-        self.assertIn("Week", lines[1])
+        self.assertIn("5H", lines[1])
+        self.assertIn("7D", lines[1])
         self.assertIn("Working", lines[2])
 
     def test_invalid_numbers_stay_unknown(self):
@@ -87,7 +136,7 @@ class RendererTests(unittest.TestCase):
             self.assertNotIn("0% left", row)
             self.assertNotIn("nan", row)
             self.assertNotIn("inf", row)
-            self.assertIn("—", row)
+            self.assertIn("n/a", row)
 
     def test_stale_quota_keeps_working_and_last_observation(self):
         snapshot = self.snapshot()
@@ -101,8 +150,8 @@ class RendererTests(unittest.TestCase):
         snapshot = self.snapshot()
         snapshot["five_hour"] = {"remaining":12, "resets_at":1}
         text = "\n".join(renderer.render(snapshot, 220, color=False))
-        self.assertIn("12% left", text)
-        self.assertIn("Reset pending", text)
+        self.assertIn("88.0%", text)
+        self.assertIn("reset pending", text)
 
     def test_account_change_reason_is_visible(self):
         snapshot = self.snapshot()

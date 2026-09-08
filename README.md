@@ -52,10 +52,12 @@ The installer preserves unrelated files and symlinks. It does not modify the def
 | Row | Information |
 | --- | --- |
 | Session | Model, reasoning effort, working directory, Git branch |
-| Capacity | Context remaining, last observed general Codex quota |
-| Activity | Observed task state, elapsed time, data freshness |
+| Capacity | Context tokens and usage, 5H/7D usage and reset countdowns |
+| Activity | Observed task state, elapsed time, cache tokens and hit rate |
 
-Bars show **used** capacity; numbers show **remaining** capacity. Missing values stay `—`. Quota comes from that exact session's last observation, so it records what the session last reported. A new session may show pending until its first prompt creates a rollout file.
+Bars and percentages both show **used** capacity. The ten-cell sliders and three-row layout follow the author's Claude Code statusline. Context tokens come from the exact session; its percentage follows Codex's reserved-token calculation. Cache hit rate means cached input tokens divided by input tokens.
+
+Account quota can appear before the first prompt. Until the CLI creates its session log, the HUD says **Ready — send a message to start session tracking**. Missing quota windows show `n/a`; they do not mean zero usage. Codex may report a weekly window without a five-hour window.
 
 
 ## Everyday use
@@ -98,7 +100,9 @@ This alpha supports macOS. Linux and Windows are outside its support scope. The 
 
 This alpha omits model-specific quota buckets, billing estimates, custom widgets, aggregate agent progress, indirect resume selectors, and fork entry commands.
 
-The collector reads selected local rollout metadata and makes no independent API calls. It does not read credential contents. Codex itself keeps its normal network and authentication behavior. Quota is a session observation, not a fresh account-wide API lookup.
+The collector reads selected local rollout metadata. For startup quota, it asks the official Codex app-server for `account/rateLimits/read` using that session's `CODEX_HOME`. Codex handles authentication; the HUD does not parse credential contents. Visible sessions share one account query per home and executable, cached for 180 seconds. Hidden sessions do not start new quota queries. A newer session observation can replace the cached account snapshot.
+
+In Orca, use a writable terminal view. A structured Chat UI can hide terminal output or use a different session route; a shell wrapper alone does not prove that the visible chat and HUD track the same session. Existing tabs are not retroactively attached.
 
 <details>
 <summary>Local data and account changes</summary>
