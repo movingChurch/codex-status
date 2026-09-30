@@ -45,7 +45,7 @@ codex-status -- --model MODEL
 ```
 
 - **Scroll:** use the mouse wheel over the Codex pane. Scrolling enters tmux history, rather than recalling earlier input. Press `q` to return to the live pane.
-- **Detach:** press `Ctrl-b`, then `d`.
+- **Close the session:** close the terminal or press `Ctrl-b`, then `d`. Codex and its HUD exit when the last client disconnects; resume the conversation in a new terminal.
 - **Close only the HUD:** select the lower pane with `Ctrl-b`, then Down; press `Ctrl-b`, then `x`.
 - **Finish:** exit Codex normally. Its paired HUD closes. The shared collector exits after the last HUD disconnects.
 

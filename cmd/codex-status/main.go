@@ -30,7 +30,7 @@ func run(args []string) int {
 	var err error
 	switch {
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
-		fmt.Println("Usage: codex-status [--resume UUID] [-- Codex arguments]\nA three-row HUD below the official Codex CLI. Requires tmux and Codex.\n\n  --version     Print version\n  --wrap        Transparent codex shell integration\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit Codex normally to close its HUD.")
+		fmt.Println("Usage: codex-status [--resume UUID] [-- Codex arguments]\nA three-row HUD below the official Codex CLI. Requires tmux and Codex.\n\n  --version     Print version\n  --wrap        Transparent codex shell integration\n\nScroll with the mouse wheel. Press q to leave scroll history.\nClosing the terminal or pressing Ctrl-b d ends Codex and its HUD.")
 		return 0
 	case len(args) == 1 && args[0] == "--version":
 		fmt.Println("codex-status " + version)
@@ -210,16 +210,9 @@ func launch(resume string, args []string) int {
 	if err != nil || !panePattern.MatchString(pane) {
 		return 2
 	}
-	ready := false
 	hud := ""
-	defer func() {
-		if !ready {
-			if panePattern.MatchString(hud) {
-				tmuxCall(socket, "kill-pane", "-t", hud)
-			}
-			tmuxCall(socket, "kill-pane", "-t", pane)
-		}
-	}()
+	// Each launch owns its server, including failed attachments.
+	defer tmuxCall(socket, "kill-server")
 	for _, settings := range displaySettings() {
 		if _, err = tmuxCall(socket, settings...); err != nil {
 			return 2
@@ -236,7 +229,7 @@ func launch(resume string, args []string) int {
 		return 2
 	}
 	for _, event := range []string{"client-attached", "client-resized"} {
-		if _, err = tmuxCall(socket, "set-hook", "-t", "codex", event, "resize-pane -t "+hud+" -y 4"); err != nil {
+		if _, err = tmuxCall(socket, "set-hook", "-t", "codex", event, attachmentHook(event, hud)); err != nil {
 			return 2
 		}
 	}
@@ -244,7 +237,6 @@ func launch(resume string, args []string) int {
 	if _, err = tmuxCall(socket, "wait-for", "-S", "ready-"+id); err != nil {
 		return 2
 	}
-	ready = true
 	cmd := exec.Command("tmux", "-S", socket, "attach-session", "-t", "codex")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -357,7 +349,20 @@ func runner(o runnerOptions) int {
 	go func() {
 		for {
 			select {
-			case <-signals:
+			case sig := <-signals:
+				// Terminal closure must reach Codex even if only the runner was signaled.
+				if sig == syscall.SIGINT {
+					continue // The foreground group already receives keyboard interrupts.
+				}
+				_ = cmd.Process.Signal(syscall.SIGTERM)
+				timer := time.NewTimer(5 * time.Second)
+				select {
+				case <-done:
+					timer.Stop()
+				case <-timer.C:
+					_ = cmd.Process.Kill()
+				}
+				return
 			case <-done:
 				return
 			}
