@@ -97,7 +97,8 @@ func accountFetch(parent context.Context, home, executable string) (map[string]a
 	defer cancel()
 	cmd := exec.CommandContext(ctx, executable, "app-server")
 	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "CODEX_HOME=") {
+		name, _, _ := strings.Cut(entry, "=")
+		if name == "PATH" || name == "HOME" || name == "USER" || name == "LOGNAME" || name == "SHELL" || name == "TMPDIR" || name == "LANG" || strings.HasPrefix(name, "LC_") || name == "HTTPS_PROXY" || name == "HTTP_PROXY" || name == "ALL_PROXY" || name == "NO_PROXY" || name == "SSL_CERT_FILE" {
 			cmd.Env = append(cmd.Env, entry)
 		}
 	}

@@ -36,10 +36,12 @@ func TestAccountRejectInvalidWindows(t *testing.T) {
 }
 
 func TestAccountFetchProtocol(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "synthetic-other-session")
 	helper := filepath.Join(t.TempDir(), "codex")
 	script := `#!/bin/sh
 [ "$1" = app-server ] || exit 1
 [ "$CODEX_HOME" = /test/account ] || exit 1
+[ -z "$OPENAI_API_KEY" ] || exit 1
 read init
 case "$init" in *initialize*) ;; *) exit 1;; esac
 printf '%s\n' '{"method":"notice"}' '{"id":1,"result":{}}'

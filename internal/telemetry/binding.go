@@ -210,6 +210,19 @@ func bindingPID(value any) int {
 	return 0
 }
 
+// ProcessExecutable captures an authoritative kernel executable after a trusted
+// launcher re-execs, without relaxing subsequent binding checks.
+func ProcessExecutable(pid int, started string) string {
+	if started == "" || ProcessIdentity(pid) != started {
+		return ""
+	}
+	path := bindingProcessExecutable(pid)
+	if ProcessIdentity(pid) != started {
+		return ""
+	}
+	return path
+}
+
 // BindRun accepts only a unique root rollout held by the exact launched process.
 func BindRun(meta map[string]any) string {
 	path, _ := BindRunStatus(meta)

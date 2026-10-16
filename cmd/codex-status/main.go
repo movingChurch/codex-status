@@ -41,6 +41,9 @@ func run(args []string) int {
 		if kind != "codex" && kind != "claude" && kind != "antigravity" {
 			return 2
 		}
+		if kind == "codex" && len(native) >= 2 && native[0] == "resume" && uuidPattern.MatchString(strings.ToLower(native[1])) {
+			return launchRuntime(kind, strings.ToLower(native[1]), native[2:])
+		}
 		return launchRuntime(kind, "", native)
 	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback"):
 		return management(args)
@@ -219,6 +222,7 @@ func launchRuntime(kind, resume string, args []string) int {
 	}
 	words := []string{self, "__runner", "--runtime", runtimeDir, "--run", id, "--socket", socket, "--codex", native}
 	words = append(words, "--kind", kind)
+	words = append(words, "--environment", "relay")
 	if resume != "" {
 		words = append(words, "--resume", resume)
 	}
@@ -232,6 +236,11 @@ func launchRuntime(kind, resume string, args []string) int {
 		fmt.Fprintln(os.Stderr, "codex-status: running manager is incompatible; finish its sessions before upgrading")
 		return 2
 	}
+	relay, relayErr := startLaunchEnvironment(runtimeDir, id, os.Environ())
+	if relayErr != nil {
+		return 2
+	}
+	defer relay.Close()
 	pane, err := tmuxCall(socket, "-f", "/dev/null", "new-session", "-d", "-s", sessionName, "-c", cwd, "-P", "-F", "#{pane_id}", shellCommand(words))
 	if err != nil || !panePattern.MatchString(pane) {
 		return 2
@@ -267,6 +276,9 @@ func launchRuntime(kind, resume string, args []string) int {
 		}
 	}
 	// Signal only after all setup succeeds: failures above never terminate a live Codex.
+	if err = relay.Wait(time.Now().Add(launchEnvironmentTimeout)); err != nil {
+		return 2
+	}
 	if _, err = tmuxCall(socket, "wait-for", "-S", "ready-"+id); err != nil {
 		return 2
 	}
@@ -307,13 +319,14 @@ func exitCode(err error) int {
 type runnerOptions struct {
 	Runtime, Run, Socket, Codex, Resume string
 	Kind                                string
+	Environment                         string
 	Args                                []string
 }
 
 func parseRunner(args []string) (runnerOptions, error) {
 	var o runnerOptions
 	o.Kind = "codex"
-	fields := map[string]*string{"--runtime": &o.Runtime, "--run": &o.Run, "--socket": &o.Socket, "--codex": &o.Codex, "--resume": &o.Resume, "--kind": &o.Kind}
+	fields := map[string]*string{"--runtime": &o.Runtime, "--run": &o.Run, "--socket": &o.Socket, "--codex": &o.Codex, "--resume": &o.Resume, "--kind": &o.Kind, "--environment": &o.Environment}
 	seen := map[string]bool{}
 	for len(args) > 0 {
 		if args[0] == "--" {
@@ -328,7 +341,7 @@ func parseRunner(args []string) (runnerOptions, error) {
 		*p = args[1]
 		args = args[2:]
 	}
-	if !uuidPattern.MatchString(o.Run) || !filepath.IsAbs(o.Runtime) || !filepath.IsAbs(o.Codex) || !ownedSocket(o) || (o.Resume != "" && !uuidPattern.MatchString(o.Resume)) || (o.Kind != "codex" && o.Kind != "claude" && o.Kind != "antigravity") {
+	if !uuidPattern.MatchString(o.Run) || !filepath.IsAbs(o.Runtime) || !filepath.IsAbs(o.Codex) || !ownedSocket(o) || (o.Resume != "" && !uuidPattern.MatchString(o.Resume)) || (o.Kind != "codex" && o.Kind != "claude" && o.Kind != "antigravity") || (o.Environment != "" && o.Environment != "relay") {
 		return o, errArguments
 	}
 	return o, nil
@@ -346,6 +359,13 @@ func runner(o runnerOptions) int {
 	pane := os.Getenv("TMUX_PANE")
 	if !panePattern.MatchString(pane) {
 		return 2
+	}
+	if o.Environment == "relay" {
+		environment, receiveErr := receiveLaunchEnvironment(o.Runtime, o.Run)
+		if receiveErr != nil {
+			return 2
+		}
+		restoreLaunchEnvironment(environment)
 	}
 	if _, err := tmuxCall(o.Socket, "wait-for", "ready-"+o.Run); err != nil {
 		return 2
@@ -429,7 +449,22 @@ func runner(o runnerOptions) int {
 		started = telemetry.ProcessIdentity(cmd.Process.Pid)
 	}
 	if started != "" {
-		meta := map[string]any{"v": 1, "runtime": o.Kind, "id": o.Run, "home": home, "cwd": cwd, "tmux_socket": o.Socket, "codex_pane": pane, "hud_pane": hud, "executable": o.Codex, "launched_at": float64(time.Now().UnixMilli()) / 1000, "account_quota": o.Kind == "codex", "pid": cmd.Process.Pid, "started": started, "auth_epoch": telemetry.AuthEpoch(home)}
+		effective := telemetry.ProcessExecutable(cmd.Process.Pid, started)
+		// Sample across immediate launcher re-execs before sealing the receipt.
+		for i, stable := 0, 0; i < 20 && stable < 2; i++ {
+			time.Sleep(10 * time.Millisecond)
+			next := telemetry.ProcessExecutable(cmd.Process.Pid, started)
+			if next != "" && next == effective {
+				stable++
+			} else {
+				effective = next
+				stable = 0
+			}
+		}
+		if effective == "" {
+			effective = o.Codex
+		}
+		meta := map[string]any{"v": 1, "runtime": o.Kind, "id": o.Run, "home": home, "cwd": cwd, "tmux_socket": o.Socket, "codex_pane": pane, "hud_pane": hud, "executable": effective, "launcher_executable": o.Codex, "launched_at": float64(time.Now().UnixMilli()) / 1000, "account_quota": nativeStartupQuota(o.Kind, nativeArgs), "pid": cmd.Process.Pid, "started": started, "auth_epoch": telemetry.AuthEpoch(home)}
 		if o.Resume != "" {
 			meta["expected_session"] = o.Resume
 		}

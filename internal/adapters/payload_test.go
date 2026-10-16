@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -29,6 +30,18 @@ func TestContext(t *testing.T) {
 				t.Fatalf("got %#v", out)
 			}
 		})
+	}
+}
+
+func TestAntigravityBeforeConversationIsPending(t *testing.T) {
+	_, err := Normalize("antigravity", []byte(`{"conversation_id":"","session_id":"","model":null,"context_window":{"used_percentage":0}}`))
+	if !errors.Is(err, ErrSessionPending) {
+		t.Fatal(err)
+	}
+	for _, raw := range []string{`{"conversation_id":"","session_id":"different"}`, `{"conversation_id":{},"session_id":""}`} {
+		if _, err = Normalize("antigravity", []byte(raw)); err == nil || errors.Is(err, ErrSessionPending) {
+			t.Fatal("invalid identity admitted as pending", raw)
+		}
 	}
 }
 func TestWindowsAndPrivacy(t *testing.T) {

@@ -103,6 +103,52 @@ func TestBindingClosedRootNotEvidence(t *testing.T) {
 		t.Fatal("closed root accepted")
 	}
 }
+
+func TestBindingCapturesReexecReceipt(t *testing.T) {
+	meta, folder := bindingFixture(t)
+	path := writeBindingRoot(t, folder, bindingRoot, nil)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(t.TempDir(), "launcher")
+	script := "#!/bin/sh\nexec '" + strings.ReplaceAll(exe, "'", "'\\''") + "' -test.run=^TestBindingChildHelper$\n"
+	if err = os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(wrapper)
+	cmd.Env = append(os.Environ(), "CODEX_BINDING_CHILD="+path)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stdin.Close(); _ = cmd.Wait() }()
+	if !bufio.NewScanner(stdout).Scan() {
+		t.Fatal("helper did not start")
+	}
+	started := ProcessIdentity(cmd.Process.Pid)
+	effective := ProcessExecutable(cmd.Process.Pid, started)
+	if effective == "" || effective == wrapper || ProcessExecutable(cmd.Process.Pid, "reused") != "" {
+		t.Fatal("invalid kernel receipt")
+	}
+	meta["pid"] = cmd.Process.Pid
+	meta["started"] = started
+	meta["executable"] = wrapper
+	if BindRun(meta) != "" {
+		t.Fatal("launcher path silently admitted")
+	}
+	meta["executable"] = effective
+	if BindRun(meta) != path {
+		t.Fatal("captured native process did not bind")
+	}
+}
 func TestBindingAuthEpoch(t *testing.T) {
 	home := bindingResolve(t.TempDir())
 	first := AuthEpoch(home)

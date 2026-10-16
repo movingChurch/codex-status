@@ -97,7 +97,12 @@ func (s *callbackStore) update(id, epoch, token string, data map[string]any, now
 		return false
 	}
 	session, ok := data["session_id"].(string)
-	if !ok || session == "" || len(session) > 256 || (r.session != "" && r.session != session) {
+	if !ok || session == "" || len(session) > 512 {
+		return false
+	}
+	if r.session != "" && r.session != session {
+		r.data = nil
+		r.diagnostic = "session-rebind-required"
 		return false
 	}
 	r.session = session
@@ -117,6 +122,9 @@ func (s *callbackStore) update(id, epoch, token string, data map[string]any, now
 }
 func (s *callbackStore) snapshot(id string, now time.Time) map[string]any {
 	r := s.runs[id]
+	if r != nil && r.diagnostic == "session-pending" {
+		return map[string]any{"state": "ready", "context_status": "pending"}
+	}
 	if r != nil && r.diagnostic != "" {
 		return map[string]any{"state": "error", "context_status": "error", "callback_error": r.diagnostic}
 	}
@@ -140,11 +148,25 @@ func (s *callbackStore) reject(id, epoch, token string, now time.Time) bool {
 	t, ok := s.tickets[token]
 	delete(s.tickets, token)
 	r := s.runs[id]
-	if !ok || r == nil || t.run != id || t.epoch != epoch || t.scope != s.scopes[id] || now.Sub(t.issued) > CallbackBudget {
+	if !ok || r == nil || t.run != id || t.epoch != epoch || t.scope != s.scopes[id] || t.sequence <= r.accepted || now.Sub(t.issued) > CallbackBudget {
 		return false
 	}
+	r.accepted = t.sequence
 	r.data = nil
 	r.diagnostic = "incompatible-payload"
+	return true
+}
+
+func (s *callbackStore) pending(id, epoch, token string, now time.Time) bool {
+	if !s.reject(id, epoch, token, now) {
+		return false
+	}
+	r := s.runs[id]
+	if r.session != "" {
+		r.diagnostic = "session-rebind-required"
+		return false
+	}
+	r.diagnostic = "session-pending"
 	return true
 }
 

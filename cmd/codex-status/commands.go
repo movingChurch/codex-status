@@ -21,6 +21,42 @@ import (
 func ownedSocket(o runnerOptions) bool {
 	return o.Socket == filepath.Join(o.Runtime, "tmux.sock") || o.Socket == filepath.Join(o.Runtime, "tmux-"+o.Run+".sock")
 }
+
+func restoreLaunchEnvironment(environment []string) {
+	tmux, pane := os.Getenv("TMUX"), os.Getenv("TMUX_PANE")
+	os.Clearenv()
+	for _, entry := range environment {
+		name, value, ok := strings.Cut(entry, "=")
+		if ok && name != "TMUX" && name != "TMUX_PANE" {
+			_ = os.Setenv(name, value)
+		}
+	}
+	if tmux != "" {
+		_ = os.Setenv("TMUX", tmux)
+	}
+	if pane != "" {
+		_ = os.Setenv("TMUX_PANE", pane)
+	}
+}
+
+func nativeStartupQuota(kind string, args []string) bool {
+	if kind != "codex" {
+		return false
+	}
+	for _, name := range []string{"OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORGANIZATION", "OPENAI_PROJECT"} {
+		if os.Getenv(name) != "" {
+			return false
+		}
+	}
+	// The startup app-server intentionally has no forwarded session arguments.
+	// A different profile/provider must report its own exact-session quotas.
+	for _, arg := range args {
+		if arg == "--oss" || arg == "--local-provider" || strings.HasPrefix(arg, "--local-provider=") || arg == "--config" || strings.HasPrefix(arg, "--config=") || arg == "--profile" || strings.HasPrefix(arg, "--profile=") || strings.HasPrefix(arg, "-c") || strings.HasPrefix(arg, "-p") {
+			return false
+		}
+	}
+	return true
+}
 func runtimeExecutable(kind string) (string, error) {
 	if kind == "codex" {
 		return nativeExecutable()
@@ -41,7 +77,19 @@ func runtimeExecutable(kind string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.EvalSymlinks(path)
+	path, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	self, e := os.Executable()
+	if e != nil {
+		return "", e
+	}
+	self, _ = filepath.EvalSymlinks(self)
+	if path == self {
+		return "", errors.New("recursive runtime executable")
+	}
+	return path, nil
 }
 func statusLine(kind string) (map[string]any, error) {
 	self, err := os.Executable()
@@ -291,7 +339,11 @@ func callback(kind string) int {
 	select {
 	case result := <-done:
 		if result.err != nil {
-			_, _ = engine.RPC(root, map[string]any{"v": 1, "op": "reject", "run": id, "ticket": ticket["ticket"], "diagnostics": result.diagnostics}, deadline)
+			op := "reject"
+			if errors.Is(result.err, adapters.ErrSessionPending) {
+				op = "pending"
+			}
+			_, _ = engine.RPC(root, map[string]any{"v": 1, "op": op, "run": id, "ticket": ticket["ticket"], "diagnostics": result.diagnostics}, deadline)
 			return 0
 		}
 		_, _ = engine.RPC(root, map[string]any{"v": 1, "op": "publish", "run": id, "ticket": ticket["ticket"], "data": result.data}, deadline)

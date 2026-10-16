@@ -361,6 +361,9 @@ func renderActivity(s map[string]any, width int, now float64) []renderSegment {
 		reason = " · Unsupported quota"
 	}
 	text := state + reason + " · " + activity
+	if s["callback_error"] == "session-rebind-required" {
+		text = "Session changed · Relaunch the HUD wrapper"
+	}
 	if issue := map[string]string{"ambiguous-root": "Session ambiguous", "unsupported-root": "Incompatible session data", "resume-mismatch": "Resume mismatch", "inspection-failed": "Process inspection unavailable", "process-mismatch": "Process changed", "invalid-session": "Invalid session", "invalid-path": "Invalid path", "process-ended": "Session ended"}[renderClean(s["binding_reason"])]; issue != "" {
 		text = state + " · " + issue
 	}

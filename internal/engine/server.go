@@ -75,6 +75,10 @@ func Serve(runtime string) error {
 
 // All run and subscriber state belongs to this loop; workers only send requests.
 func runServer(listener net.Listener, runtime string, c *collector, render renderFunc, interval, idle time.Duration) error {
+	workerGrace, configErr := idleWorkerGrace()
+	if configErr != nil {
+		return configErr
+	}
 	requests := make(chan request, 64)
 	stop := make(chan struct{})
 	var workers sync.WaitGroup
@@ -207,12 +211,15 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				continue
 			}
 			if event.value["op"] == "status" {
-				frames, contexts, quotas, tickets, rejections := 0, 0, 0, 0, 0
+				frames, contexts, quotas, tickets, rejections, pending := 0, 0, 0, 0, 0, 0
 				diagnostics := []any{}
 				for _, r := range callbacks.runs {
 					frames += int(r.updates)
 					tickets += int(r.sequence)
-					if r.diagnostic != "" {
+					if r.diagnostic == "session-pending" {
+						pending++
+					}
+					if r.diagnostic != "" && r.diagnostic != "session-pending" {
 						rejections++
 						if r.diagnostics != nil {
 							diagnostics = append(diagnostics, r.diagnostics)
@@ -231,7 +238,9 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				state["callback_frames"] = frames
 				state["callback_tickets"] = tickets
 				state["callback_rejections"] = rejections
+				state["callback_pending_runs"] = pending
 				state["callback_diagnostics"] = diagnostics
+				state["idle_worker_grace_seconds"] = workerGrace.Seconds()
 				state["context_observed_runs"] = contexts
 				state["quota_observed_runs"] = quotas
 				event.conn.SetWriteDeadline(time.Now().Add(time.Second))
@@ -245,7 +254,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				event.conn.Close()
 				continue
 			}
-			if op := stringValue(event.value["op"]); op == "ticket" || op == "publish" || op == "reject" {
+			if op := stringValue(event.value["op"]); op == "ticket" || op == "publish" || op == "reject" || op == "pending" {
 				response := map[string]any{"error": "invalid-registration"}
 				if liveMetadata(meta) && (meta["runtime"] == "claude" || meta["runtime"] == "antigravity") {
 					epoch := stringValue(meta["started"]) + AuthGeneration(stringValue(meta["runtime"]), stringValue(meta["home"]))
@@ -256,6 +265,10 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					case "reject":
 						if callbacks.reject(id, epoch, stringValue(event.value["ticket"]), time.Now()) {
 							callbacks.runs[id].diagnostics, _ = event.value["diagnostics"].(map[string]any)
+							response = map[string]any{"v": 1, "accepted": true}
+						}
+					case "pending":
+						if callbacks.pending(id, epoch, stringValue(event.value["ticket"]), time.Now()) {
 							response = map[string]any{"v": 1, "accepted": true}
 						}
 					default:
@@ -379,10 +392,16 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 						delete(c.runs, id)
 						delete(callbacks.runs, id)
 						callbacks.registry.Remove(id, now)
+						delete(callbacks.scopes, id)
 					}
 				}
 			}
-			for _, key := range callbacks.registry.Sweep(now, 30*time.Second) {
+			for key, ticket := range callbacks.tickets {
+				if now.Sub(ticket.issued) > CallbackBudget {
+					delete(callbacks.tickets, key)
+				}
+			}
+			for _, key := range callbacks.registry.Sweep(now, workerGrace) {
 				delete(callbacks.quota, key)
 			}
 			if !inFlight && len(c.runs) > 0 {

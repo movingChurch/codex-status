@@ -55,3 +55,42 @@ func TestRunnerSharedSocketAndRuntime(t *testing.T) {
 		t.Fatal("foreign socket accepted")
 	}
 }
+
+func TestRestoreLaunchEnvironmentKeepsFreshPane(t *testing.T) {
+	original := os.Environ()
+	defer func() {
+		os.Clearenv()
+		for _, entry := range original {
+			name, value, _ := strings.Cut(entry, "=")
+			_ = os.Setenv(name, value)
+		}
+	}()
+	_ = os.Setenv("TMUX", "fresh-server")
+	_ = os.Setenv("TMUX_PANE", "%42")
+	_ = os.Setenv("OLD_ACCOUNT_MARKER", "first-window")
+	restoreLaunchEnvironment([]string{"CODEX_HOME=/synthetic/account-b", "CLAUDE_CONFIG_DIR=/synthetic/claude-b", "TMUX=stale-server", "TMUX_PANE=%1", "LITERAL=$HOME\n'quoted'"})
+	if os.Getenv("CODEX_HOME") != "/synthetic/account-b" || os.Getenv("CLAUDE_CONFIG_DIR") != "/synthetic/claude-b" || os.Getenv("OLD_ACCOUNT_MARKER") != "" || os.Getenv("TMUX") != "fresh-server" || os.Getenv("TMUX_PANE") != "%42" || os.Getenv("LITERAL") != "$HOME\n'quoted'" {
+		t.Fatal("launch environment was not restored independently")
+	}
+}
+
+func TestStartupQuotaUsesExactProvider(t *testing.T) {
+	for _, name := range []string{"OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORGANIZATION", "OPENAI_PROJECT"} {
+		t.Setenv(name, "")
+	}
+	if !nativeStartupQuota("codex", []string{"--model", "example"}) {
+		t.Fatal("default account startup disabled")
+	}
+	for _, args := range [][]string{{"-c", "model_provider=custom"}, {"-cmodel_provider=custom"}, {"--config=model_provider=custom"}, {"--profile", "other"}, {"-pother"}, {"--oss"}, {"--local-provider=ollama"}} {
+		if nativeStartupQuota("codex", args) {
+			t.Fatal("override queried default account", args)
+		}
+	}
+	t.Setenv("OPENAI_API_KEY", "synthetic")
+	if nativeStartupQuota("codex", nil) {
+		t.Fatal("API key queried default account")
+	}
+	if nativeStartupQuota("claude", nil) {
+		t.Fatal("wrong runtime helper enabled")
+	}
+}

@@ -17,6 +17,10 @@ const maxPayload = 1 << 20
 const maxSafe = 9007199254740991
 
 var errPayload = errors.New("incompatible statusline payload")
+
+// ErrSessionPending identifies the observed native pre-conversation state.
+// Its metrics are not admitted as a bound session observation.
+var ErrSessionPending = errors.New("native session not created yet")
 var errDuplicateKey = errors.New("duplicate JSON key")
 var errDepth = errors.New("JSON nesting limit exceeded")
 
@@ -38,6 +42,9 @@ func Normalize(runtime string, raw []byte) (map[string]any, error) {
 	root, ok := value.(map[string]any)
 	if !ok {
 		return nil, errPayload
+	}
+	if runtime == "antigravity" && root["conversation_id"] == "" && root["session_id"] == "" {
+		return nil, ErrSessionPending
 	}
 	id, ok := printable(root["session_id"], 512)
 	if runtime == "antigravity" {

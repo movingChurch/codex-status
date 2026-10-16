@@ -88,3 +88,35 @@ func TestCallbackScopedQuotasAndIsolatedContext(t *testing.T) {
 		t.Fatal("absent window retained")
 	}
 }
+
+func TestCallbackPreConversationPending(t *testing.T) {
+	s := newCallbackStore()
+	now := time.Now()
+	s.bind("a", "auth", nil, now)
+	token := s.ticket("a", "auth", now)["ticket"].(string)
+	if !s.pending("a", "auth", token, now) || s.snapshot("a", now)["context_status"] != "pending" {
+		t.Fatal("startup not pending")
+	}
+	token = s.ticket("a", "auth", now)["ticket"].(string)
+	if !s.update("a", "auth", token, map[string]any{"session_id": "created-session"}, now) {
+		t.Fatal("pending prevented real session binding")
+	}
+	token = s.ticket("a", "auth", now)["ticket"].(string)
+	if s.pending("a", "auth", token, now) || s.runs["a"].session != "created-session" {
+		t.Fatal("pending reset established session")
+	}
+}
+
+func TestOldPendingCannotEraseNewObservation(t *testing.T) {
+	s := newCallbackStore()
+	now := time.Now()
+	s.bind("a", "auth", nil, now)
+	old := s.ticket("a", "auth", now)["ticket"].(string)
+	fresh := s.ticket("a", "auth", now)["ticket"].(string)
+	if !s.update("a", "auth", fresh, map[string]any{"session_id": "new-session", "context_used": 10}, now) {
+		t.Fatal("new observation rejected")
+	}
+	if s.pending("a", "auth", old, now) || s.snapshot("a", now)["context_used"] != 10 {
+		t.Fatal("old pending erased new observation")
+	}
+}
