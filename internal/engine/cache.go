@@ -17,6 +17,7 @@ type accountEntry struct {
 	data    map[string]any
 	next    time.Time
 	pending bool
+	queried bool
 	cancel  context.CancelFunc
 }
 type accountCache struct {
@@ -26,6 +27,7 @@ type accountCache struct {
 	queries int64
 	wg      sync.WaitGroup
 	closed  bool
+	once    bool
 }
 
 func newAccountCache(fetch func(context.Context, string, string) map[string]any) *accountCache {
@@ -46,10 +48,11 @@ func (c *accountCache) snapshot(home, executable, epoch string, now time.Time) m
 		entry = &accountEntry{epoch: epoch}
 		c.entries[key] = entry
 	}
-	if !entry.pending && !now.Before(entry.next) {
+	if !entry.pending && (!c.once || !entry.queried) && !now.Before(entry.next) {
 		ctx, cancel := context.WithTimeout(context.Background(), 17*time.Second)
 		entry.cancel = cancel
 		entry.pending = true
+		entry.queried = true
 		entry.next = now.Add(180 * time.Second)
 		c.queries++
 		c.wg.Add(1)

@@ -172,7 +172,9 @@ func bindingRootCandidate(open openedRollout, sessions, cwd string) string {
 		return ""
 	}
 	meta := bindingReadMeta(path, open.identity)
-	if meta == nil || meta["source"] != "cli" || meta["parent_thread_id"] != nil || meta["cli_version"] != "0.153.4" {
+	// Versions are diagnostic metadata. Admission depends on the bounded root
+	// contract and exact process/file/session identity, including unknown releases.
+	if meta == nil || meta["source"] != "cli" || meta["parent_thread_id"] != nil {
 		return ""
 	}
 	id := bindingUUID(meta["id"])
@@ -210,42 +212,48 @@ func bindingPID(value any) int {
 
 // BindRun accepts only a unique root rollout held by the exact launched process.
 func BindRun(meta map[string]any) string {
+	path, _ := BindRunStatus(meta)
+	return path
+}
+
+// BindRunStatus distinguishes startup waiting from a known binding failure.
+func BindRunStatus(meta map[string]any) (string, string) {
 	pid := bindingPID(meta["pid"])
 	started, ok := meta["started"].(string)
 	if pid == 0 || !ok || started == "" || ProcessIdentity(pid) != started {
-		return ""
+		return "", "process-ended"
 	}
 	expected := ""
 	if meta["expected_session"] != nil {
 		expected = bindingUUID(meta["expected_session"])
 		if expected == "" {
-			return ""
+			return "", "invalid-session"
 		}
 	}
 	homeValue, hOK := meta["home"].(string)
 	cwdValue, cOK := meta["cwd"].(string)
 	if !hOK || !cOK {
-		return ""
+		return "", "invalid-path"
 	}
 	home := bindingResolve(homeValue)
 	cwd := bindingResolve(cwdValue)
 	sessions := bindingResolve(filepath.Join(home, "sessions"))
 	if home == "" || cwd == "" || sessions == "" || !bindingUnder(sessions, home) {
-		return ""
+		return "", "pending"
 	}
 	if meta["executable"] != nil {
 		exe, ok := meta["executable"].(string)
 		if !ok {
-			return ""
+			return "", "process-mismatch"
 		}
 		resolved := bindingResolve(exe)
 		if resolved == "" || bindingProcessExecutable(pid) != resolved {
-			return ""
+			return "", "process-mismatch"
 		}
 	}
 	open, ok := bindingOpenRollouts(pid)
 	if !ok {
-		return ""
+		return "", "inspection-failed"
 	}
 	candidates := make(map[string]bool)
 	for _, file := range open {
@@ -253,14 +261,23 @@ func BindRun(meta map[string]any) string {
 			candidates[path] = true
 		}
 	}
-	if len(candidates) != 1 || ProcessIdentity(pid) != started {
-		return ""
+	if ProcessIdentity(pid) != started {
+		return "", "process-ended"
+	}
+	if len(candidates) > 1 {
+		return "", "ambiguous-root"
+	}
+	if len(candidates) == 0 {
+		if len(open) > 0 {
+			return "", "unsupported-root"
+		}
+		return "", "pending"
 	}
 	for path := range candidates {
 		if expected != "" && bindingUUID(rolloutName.FindStringSubmatch(filepath.Base(path))[1]) != expected {
-			return ""
+			return "", "resume-mismatch"
 		}
-		return path
+		return path, ""
 	}
-	return ""
+	return "", "pending"
 }

@@ -20,7 +20,7 @@ import (
 	"github.com/movingChurch/codex-status/internal/telemetry"
 )
 
-var version = "0.2.0-alpha.1"
+var version = "0.3.0-alpha.1"
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 var panePattern = regexp.MustCompile(`^%[0-9]+$`)
 var errArguments = errors.New("invalid arguments")
@@ -29,8 +29,23 @@ func main() { os.Exit(run(os.Args[1:])) }
 func run(args []string) int {
 	var err error
 	switch {
+	case len(args) > 0 && args[0] == "run":
+		if len(args) < 2 {
+			return 2
+		}
+		kind := args[1]
+		native := args[2:]
+		if len(native) > 0 && native[0] == "--" {
+			native = native[1:]
+		}
+		if kind != "codex" && kind != "claude" && kind != "antigravity" {
+			return 2
+		}
+		return launchRuntime(kind, "", native)
+	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback"):
+		return management(args)
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
-		fmt.Println("Usage: codex-status [--resume UUID] [-- Codex arguments]\nA three-row HUD below the official Codex CLI. Requires tmux and Codex.\n\n  --version     Print version\n  --wrap        Transparent codex shell integration\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit Codex normally to close its HUD.")
+		fmt.Println("Usage: codex-status [--resume UUID] [-- Codex arguments]\n       codex-status run codex|claude|antigravity -- [native arguments]\n       codex-status preview|doctor [runtime]\n       codex-status setup|uninstall claude|antigravity [--settings PATH]\n\nShared three-row tmux HUD. Codex requires no settings modification.\nClaude uses a per-launch override. Antigravity requires explicit setup.\n  --version     Print version\n  --wrap        Transparent codex shell integration\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit the native CLI normally to close its HUD.")
 		return 0
 	case len(args) == 1 && args[0] == "--version":
 		fmt.Println("codex-status " + version)
@@ -174,12 +189,13 @@ func tmuxCall(socket string, args ...string) (string, error) {
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }
-func launch(resume string, args []string) int {
+func launch(resume string, args []string) int { return launchRuntime("codex", resume, args) }
+func launchRuntime(kind, resume string, args []string) int {
 	runtimeDir, err := engine.ValidateRuntime(filepath.Join("/tmp", fmt.Sprintf("codex-status-go-%d", os.Getuid())))
 	if err != nil {
 		return 2
 	}
-	native, err := nativeExecutable()
+	native, err := runtimeExecutable(kind)
 	if err != nil {
 		return 2
 	}
@@ -196,17 +212,27 @@ func launch(resume string, args []string) int {
 		return 2
 	}
 	id := newID()
-	socket := filepath.Join(runtimeDir, "tmux-"+id+".sock")
+	socket := filepath.Join(runtimeDir, "tmux.sock")
+	sessionName := "hud-" + id
 	if len(socket) >= 104 {
 		return 2
 	}
 	words := []string{self, "__runner", "--runtime", runtimeDir, "--run", id, "--socket", socket, "--codex", native}
+	words = append(words, "--kind", kind)
 	if resume != "" {
 		words = append(words, "--resume", resume)
 	}
 	words = append(words, "--")
 	words = append(words, args...)
-	pane, err := tmuxCall(socket, "-f", "/dev/null", "new-session", "-d", "-s", "codex", "-c", cwd, "-P", "-F", "#{pane_id}", shellCommand(words))
+	if err = engine.EnsureCollector(runtimeDir); err != nil {
+		fmt.Fprintln(os.Stderr, "codex-status: manager unavailable")
+		return 2
+	}
+	if engine.Handshake(runtimeDir) != nil {
+		fmt.Fprintln(os.Stderr, "codex-status: running manager is incompatible; finish its sessions before upgrading")
+		return 2
+	}
+	pane, err := tmuxCall(socket, "-f", "/dev/null", "new-session", "-d", "-s", sessionName, "-c", cwd, "-P", "-F", "#{pane_id}", shellCommand(words))
 	if err != nil || !panePattern.MatchString(pane) {
 		return 2
 	}
@@ -236,7 +262,7 @@ func launch(resume string, args []string) int {
 		return 2
 	}
 	for _, event := range []string{"client-attached", "client-resized"} {
-		if _, err = tmuxCall(socket, "set-hook", "-t", "codex", event, "resize-pane -t "+hud+" -y 4"); err != nil {
+		if _, err = tmuxCall(socket, "set-hook", "-t", sessionName, event, "resize-pane -t "+hud+" -y 4"); err != nil {
 			return 2
 		}
 	}
@@ -245,7 +271,7 @@ func launch(resume string, args []string) int {
 		return 2
 	}
 	ready = true
-	cmd := exec.Command("tmux", "-S", socket, "attach-session", "-t", "codex")
+	cmd := exec.Command("tmux", "-S", socket, "attach-session", "-t", sessionName)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -254,7 +280,16 @@ func launch(resume string, args []string) int {
 			cmd.Env = append(cmd.Env, value)
 		}
 	}
-	return exitCode(cmd.Run())
+	// Replace the launcher with the tmux client; independent windows need no
+	// additional persistent Go launcher after their panes have been prepared.
+	tmuxPath, lookupErr := exec.LookPath("tmux")
+	if lookupErr != nil {
+		return 2
+	}
+	if err = syscall.Exec(tmuxPath, cmd.Args, cmd.Env); err != nil {
+		return 2
+	}
+	return 0
 }
 func exitCode(err error) int {
 	if err == nil {
@@ -271,12 +306,14 @@ func exitCode(err error) int {
 
 type runnerOptions struct {
 	Runtime, Run, Socket, Codex, Resume string
+	Kind                                string
 	Args                                []string
 }
 
 func parseRunner(args []string) (runnerOptions, error) {
 	var o runnerOptions
-	fields := map[string]*string{"--runtime": &o.Runtime, "--run": &o.Run, "--socket": &o.Socket, "--codex": &o.Codex, "--resume": &o.Resume}
+	o.Kind = "codex"
+	fields := map[string]*string{"--runtime": &o.Runtime, "--run": &o.Run, "--socket": &o.Socket, "--codex": &o.Codex, "--resume": &o.Resume, "--kind": &o.Kind}
 	seen := map[string]bool{}
 	for len(args) > 0 {
 		if args[0] == "--" {
@@ -291,13 +328,13 @@ func parseRunner(args []string) (runnerOptions, error) {
 		*p = args[1]
 		args = args[2:]
 	}
-	if !uuidPattern.MatchString(o.Run) || !filepath.IsAbs(o.Runtime) || !filepath.IsAbs(o.Codex) || o.Socket != filepath.Join(o.Runtime, "tmux-"+o.Run+".sock") || (o.Resume != "" && !uuidPattern.MatchString(o.Resume)) {
+	if !uuidPattern.MatchString(o.Run) || !filepath.IsAbs(o.Runtime) || !filepath.IsAbs(o.Codex) || !ownedSocket(o) || (o.Resume != "" && !uuidPattern.MatchString(o.Resume)) || (o.Kind != "codex" && o.Kind != "claude" && o.Kind != "antigravity") {
 		return o, errArguments
 	}
 	return o, nil
 }
 func cleanupHUD(o runnerOptions, pane, hud string) {
-	if !uuidPattern.MatchString(o.Run) || o.Socket != filepath.Join(o.Runtime, "tmux-"+o.Run+".sock") || !panePattern.MatchString(pane) || !panePattern.MatchString(hud) || pane == hud {
+	if !uuidPattern.MatchString(o.Run) || !ownedSocket(o) || !panePattern.MatchString(pane) || !panePattern.MatchString(hud) || pane == hud {
 		return
 	}
 	tmuxCall(o.Socket, "kill-pane", "-t", hud)
@@ -323,12 +360,24 @@ func runner(o runnerOptions) int {
 		return 2
 	}
 	home := os.Getenv("CODEX_HOME")
+	if o.Kind == "claude" {
+		home = os.Getenv("CLAUDE_CONFIG_DIR")
+	}
+	if o.Kind == "antigravity" {
+		home = ""
+	}
 	if home == "" {
 		h, e := os.UserHomeDir()
 		if e != nil {
 			return 2
 		}
 		home = filepath.Join(h, ".codex")
+		if o.Kind == "claude" {
+			home = filepath.Join(h, ".claude")
+		}
+		if o.Kind == "antigravity" {
+			home = filepath.Join(h, ".gemini", "antigravity-cli")
+		}
 	}
 	home, err = filepath.Abs(home)
 	if err != nil {
@@ -342,7 +391,17 @@ func runner(o runnerOptions) int {
 		nativeArgs = append(nativeArgs, "resume", o.Resume)
 	}
 	nativeArgs = append(nativeArgs, o.Args...)
+	if o.Kind != "codex" {
+		var prepareErr error
+		nativeArgs, prepareErr = prepareNative(o, nativeArgs)
+		if prepareErr != nil {
+			fmt.Fprintln(os.Stderr, "codex-status:", prepareErr)
+			return 2
+		}
+		defer func() { _ = os.Remove(filepath.Join(o.Runtime, "launch-"+o.Run+".json")) }()
+	}
 	cmd := exec.Command(o.Codex, nativeArgs...)
+	cmd.Env = append(os.Environ(), "CODEX_STATUS_RUN="+o.Run, "CODEX_STATUS_RUNTIME_DIR="+o.Runtime)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -370,7 +429,7 @@ func runner(o runnerOptions) int {
 		started = telemetry.ProcessIdentity(cmd.Process.Pid)
 	}
 	if started != "" {
-		meta := map[string]any{"v": 1, "id": o.Run, "home": home, "cwd": cwd, "tmux_socket": o.Socket, "codex_pane": pane, "hud_pane": hud, "executable": o.Codex, "launched_at": float64(time.Now().UnixMilli()) / 1000, "account_quota": true, "pid": cmd.Process.Pid, "started": started, "auth_epoch": telemetry.AuthEpoch(home)}
+		meta := map[string]any{"v": 1, "runtime": o.Kind, "id": o.Run, "home": home, "cwd": cwd, "tmux_socket": o.Socket, "codex_pane": pane, "hud_pane": hud, "executable": o.Codex, "launched_at": float64(time.Now().UnixMilli()) / 1000, "account_quota": o.Kind == "codex", "pid": cmd.Process.Pid, "started": started, "auth_epoch": telemetry.AuthEpoch(home)}
 		if o.Resume != "" {
 			meta["expected_session"] = o.Resume
 		}

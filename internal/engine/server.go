@@ -119,6 +119,31 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 		}
 	}()
 	clients := map[net.Conn]*subscriber{}
+	callbacks := newCallbackStore()
+	profiles := map[string]*identityProfile{}
+	identityResults := make(chan identityResult, 64)
+	profileKey := func(meta map[string]any) string {
+		return stringValue(meta["runtime"]) + "\x00" + stringValue(meta["home"]) + "\x00" + stringValue(meta["executable"])
+	}
+	ensureIdentity := func(id string, meta map[string]any, now time.Time) {
+		key := profileKey(meta)
+		generation := AuthGeneration(stringValue(meta["runtime"]), stringValue(meta["home"]))
+		profile := profiles[key]
+		if profile == nil || profile.generation != generation {
+			profile = &identityProfile{generation: generation, pending: true}
+			profiles[key] = profile
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				identity := resolveIdentity(meta)
+				select {
+				case identityResults <- identityResult{key, generation, identity}:
+				case <-stop:
+				}
+			}()
+		}
+		callbacks.bind(id, stringValue(meta["started"])+generation, profile.identity, now)
+	}
 	results := make(chan tickResult, 1)
 	inFlight := false
 	visibilityChanged := false
@@ -150,8 +175,10 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					break
 				}
 			}
-			if !used {
+			if !used && !liveMetadata(c.runs[client.run].meta) {
 				delete(c.runs, client.run)
+				delete(callbacks.runs, client.run)
+				callbacks.registry.Remove(client.run, time.Now())
 			}
 			if len(clients) == 0 {
 				lastEmpty = time.Now()
@@ -180,9 +207,33 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				continue
 			}
 			if event.value["op"] == "status" {
+				frames, contexts, quotas, tickets, rejections := 0, 0, 0, 0, 0
+				diagnostics := []any{}
+				for _, r := range callbacks.runs {
+					frames += int(r.updates)
+					tickets += int(r.sequence)
+					if r.diagnostic != "" {
+						rejections++
+						if r.diagnostics != nil {
+							diagnostics = append(diagnostics, r.diagnostics)
+						}
+					}
+					if r.data["context_remaining"] != nil {
+						contexts++
+					}
+					if r.data["weekly"] != nil || r.data["five_hour"] != nil || r.data["quota_pools"] != nil {
+						quotas++
+					}
+				}
 				var usage syscall.Rusage
 				_ = syscall.Getrusage(syscall.RUSAGE_CHILDREN, &usage)
-				state := map[string]any{"v": 1, "pid": os.Getpid(), "clients": len(clients), "runs": len(c.runs), "metrics": c.metrics, "head_reads": headReads, "children_cpu_seconds": float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6}
+				state := map[string]any{"v": 1, "protocol": 2, "capabilities": []string{"callback-ticket", "adaptive-metrics", "shared-tmux"}, "started": processIdentity(), "pid": os.Getpid(), "clients": len(clients), "runs": len(c.runs), "metrics": c.metrics, "head_reads": headReads, "children_cpu_seconds": float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6}
+				state["callback_frames"] = frames
+				state["callback_tickets"] = tickets
+				state["callback_rejections"] = rejections
+				state["callback_diagnostics"] = diagnostics
+				state["context_observed_runs"] = contexts
+				state["quota_observed_runs"] = quotas
 				event.conn.SetWriteDeadline(time.Now().Add(time.Second))
 				json.NewEncoder(event.conn).Encode(state)
 				event.conn.Close()
@@ -192,6 +243,33 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 			meta, err := ReadMetadata(runtime, id)
 			if err != nil {
 				event.conn.Close()
+				continue
+			}
+			if op := stringValue(event.value["op"]); op == "ticket" || op == "publish" || op == "reject" {
+				response := map[string]any{"error": "invalid-registration"}
+				if liveMetadata(meta) && (meta["runtime"] == "claude" || meta["runtime"] == "antigravity") {
+					epoch := stringValue(meta["started"]) + AuthGeneration(stringValue(meta["runtime"]), stringValue(meta["home"]))
+					switch op {
+					case "ticket":
+						ensureIdentity(id, meta, time.Now())
+						response = callbacks.ticket(id, epoch, time.Now())
+					case "reject":
+						if callbacks.reject(id, epoch, stringValue(event.value["ticket"]), time.Now()) {
+							callbacks.runs[id].diagnostics, _ = event.value["diagnostics"].(map[string]any)
+							response = map[string]any{"v": 1, "accepted": true}
+						}
+					default:
+						data, _ := event.value["data"].(map[string]any)
+						if data != nil && data["runtime"] == meta["runtime"] && callbacks.update(id, epoch, stringValue(event.value["ticket"]), data, time.Now()) {
+							response = map[string]any{"v": 1, "accepted": true}
+						} else {
+							response = map[string]any{"error": "stale-or-incompatible-payload"}
+						}
+					}
+				}
+				_ = event.conn.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
+				_ = json.NewEncoder(event.conn).Encode(response)
+				_ = event.conn.Close()
 				continue
 			}
 			format := "json"
@@ -222,6 +300,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					epoch = c.deps.epoch(stringValue(meta["home"]))
 				}
 				c.runs[id] = &run{meta: meta, epoch: epoch}
+				ensureIdentity(id, meta, time.Now())
 			}
 			client := &subscriber{run: id, format: format, width: width, frames: make(chan []byte, 2), conn: event.conn}
 			clients[event.conn] = client
@@ -242,6 +321,18 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				}
 			}()
 			client.send(pending(meta), render)
+		case identity := <-identityResults:
+			profile := profiles[identity.profile]
+			if profile == nil || profile.generation != identity.generation {
+				continue
+			}
+			profile.identity = identity.identity
+			profile.pending = false
+			for id, r := range c.runs {
+				if profileKey(r.meta) == identity.profile {
+					callbacks.bind(id, stringValue(r.meta["started"])+identity.generation, identity.identity, time.Now())
+				}
+			}
 		case result := <-results:
 			inFlight = false
 			c.metrics = result.worker.metrics
@@ -259,11 +350,41 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				c.runs[id] = r
 				for _, client := range clients {
 					if client.run == id {
-						client.send(result.snapshots[id], render)
+						snapshot := result.snapshots[id]
+						merge(snapshot, callbacks.snapshot(id, time.Now()))
+						client.send(snapshot, render)
 					}
 				}
 			}
 		case now := <-ticker.C:
+			for id, r := range c.runs {
+				if r.meta["runtime"] == "claude" || r.meta["runtime"] == "antigravity" {
+					epoch := stringValue(r.meta["started"]) + AuthGeneration(stringValue(r.meta["runtime"]), stringValue(r.meta["home"]))
+					if state := callbacks.runs[id]; state != nil && state.epoch != epoch {
+						callbacks.ticket(id, epoch, now)
+						ensureIdentity(id, r.meta, now)
+					}
+				}
+			}
+			for id, r := range c.runs {
+				_, metaErr := ReadMetadata(runtime, id)
+				if !liveMetadata(r.meta) || metaErr != nil {
+					used := false
+					for _, client := range clients {
+						if client.run == id {
+							used = true
+						}
+					}
+					if !used {
+						delete(c.runs, id)
+						delete(callbacks.runs, id)
+						callbacks.registry.Remove(id, now)
+					}
+				}
+			}
+			for _, key := range callbacks.registry.Sweep(now, 30*time.Second) {
+				delete(callbacks.quota, key)
+			}
 			if !inFlight && len(c.runs) > 0 {
 				inFlight = true
 				worker := c.fork()
@@ -282,7 +403,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				}()
 			}
 
-			if len(clients) == 0 && (hadClients && now.Sub(lastEmpty) >= idle || !hadClients && now.Sub(started) > 10*time.Second) {
+			if len(clients) == 0 && len(c.runs) == 0 && (hadClients && now.Sub(lastEmpty) >= idle || !hadClients && now.Sub(started) > 10*time.Second) {
 				return nil
 			}
 		}

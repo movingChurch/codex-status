@@ -15,6 +15,9 @@ import (
 )
 
 func collectorConnect(runtime string) (net.Conn, error) {
+	return collectorConnectTimeout(runtime, time.Second)
+}
+func collectorConnectTimeout(runtime string, timeout time.Duration) (net.Conn, error) {
 	path := filepath.Join(runtime, "collector.sock")
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -24,7 +27,7 @@ func collectorConnect(runtime string) (net.Conn, error) {
 	if !ok || st.Uid != uint32(os.Getuid()) || info.Mode()&os.ModeSocket == 0 {
 		return nil, errors.New("unsafe collector socket")
 	}
-	return net.DialTimeout("unix", path, time.Second)
+	return net.DialTimeout("unix", path, timeout)
 }
 func EnsureCollector(runtime string) error {
 	runtime, err := ValidateRuntime(runtime)

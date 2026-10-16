@@ -116,7 +116,7 @@ func eventNumber(v any) (float64, bool) {
 func (r *SessionReader) header(raw []byte) bool {
 	m := eventDecode(raw)
 	p := eventMap(m["payload"])
-	return m["type"] == "session_meta" && p != nil && p["id"] == r.SessionID && p["session_id"] == r.SessionID && p["source"] == "cli" && p["parent_thread_id"] == nil && p["cli_version"] == "0.153.4"
+	return m["type"] == "session_meta" && p != nil && p["id"] == r.SessionID && p["session_id"] == r.SessionID && p["source"] == "cli" && p["parent_thread_id"] == nil
 }
 func (r *SessionReader) Read() map[string]any {
 	if r.Invalidated {

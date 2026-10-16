@@ -17,7 +17,10 @@ func (s *telemetrySession) reset()               { s.reader.ResetAfterAccountCha
 func (s *telemetrySession) invalidated() bool    { return s.reader.Invalidated }
 func (s *telemetrySession) bytesRead() int64     { return s.reader.BytesRead }
 func productionDependencies() dependencies {
-	return dependencies{epoch: telemetry.AuthEpoch, bind: telemetry.BindRun, reader: func(path, id string) session { return &telemetrySession{telemetry.NewSessionReader(path, id)} }, visible: paneVisibility, account: telemetry.FetchAccount, links: telemetry.LinkSnapshot}
+	// Preserve the exact-profile startup observation once per auth generation.
+	// Subsequent quotas come from the native session; unresolved accounts never
+	// create a speculative periodic polling loop or merge across profile roots.
+	return dependencies{epoch: telemetry.AuthEpoch, bind: telemetry.BindRun, bindStatus: telemetry.BindRunStatus, reader: func(path, id string) session { return &telemetrySession{telemetry.NewSessionReader(path, id)} }, visible: paneVisibility, account: telemetry.FetchAccount, accountOnce: true, links: telemetry.LinkSnapshot}
 }
 func renderSnapshot(snapshot map[string]any, width int, color bool) []string {
 	return telemetry.Render(snapshot, width, color)

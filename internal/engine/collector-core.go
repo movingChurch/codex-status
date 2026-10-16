@@ -14,12 +14,14 @@ type session interface {
 	bytesRead() int64
 }
 type dependencies struct {
-	epoch   func(string) string
-	bind    func(map[string]any) string
-	reader  func(string, string) session
-	visible func(string) map[string]bool
-	account func(context.Context, string, string) map[string]any
-	links   func(string, string, string) map[string]any
+	epoch       func(string) string
+	bind        func(map[string]any) string
+	bindStatus  func(map[string]any) (string, string)
+	reader      func(string, string) session
+	visible     func(string) map[string]bool
+	account     func(context.Context, string, string) map[string]any
+	accountOnce bool
+	links       func(string, string, string) map[string]any
 }
 type run struct {
 	meta           map[string]any
@@ -29,6 +31,7 @@ type run struct {
 	lastBinding    time.Time
 	snapshot       map[string]any
 	accountChanged bool
+	bindingIssue   string
 }
 type collector struct {
 	deps         dependencies
@@ -42,7 +45,9 @@ type collector struct {
 }
 
 func newCollector(d dependencies) *collector {
-	return &collector{deps: d, runs: map[string]*run{}, visible: map[string]map[string]bool{}, metrics: map[string]int64{}, accounts: newAccountCache(d.account), links: newLinkCache(d.links), branches: newBranchCache()}
+	accounts := newAccountCache(d.account)
+	accounts.once = d.accountOnce
+	return &collector{deps: d, runs: map[string]*run{}, visible: map[string]map[string]bool{}, metrics: map[string]int64{}, accounts: accounts, links: newLinkCache(d.links), branches: newBranchCache()}
 }
 func (c *collector) tick(now time.Time) map[string]map[string]any {
 	c.metrics["ticks"]++
@@ -74,7 +79,14 @@ func (c *collector) tick(now time.Time) map[string]map[string]any {
 		}
 		if r.lastBinding.IsZero() || now.Sub(r.lastBinding) >= 5*time.Second {
 			c.metrics["binding_checks"]++
-			path := c.deps.bind(r.meta)
+			path := ""
+			if kind := stringValue(r.meta["runtime"]); kind == "" || kind == "codex" {
+				if c.deps.bindStatus != nil {
+					path, r.bindingIssue = c.deps.bindStatus(r.meta)
+				} else {
+					path = c.deps.bind(r.meta)
+				}
+			}
 			r.lastBinding = now
 			if path != r.path {
 				r.path = path
@@ -112,6 +124,9 @@ func (c *collector) tick(now time.Time) map[string]map[string]any {
 			}
 		}
 		merge(snapshot, r.snapshot)
+		if snapshot["context_remaining"] != nil {
+			snapshot["context_status"] = "current"
+		}
 		if executable := stringValue(r.meta["executable"]); executable != "" && r.meta["account_quota"] != false {
 			account := c.accounts.snapshot(stringValue(r.meta["home"]), executable, epoch, now)
 			if number(account["quota_updated_at"]) > number(snapshot["quota_updated_at"]) {
@@ -140,6 +155,11 @@ func (c *collector) tick(now time.Time) map[string]map[string]any {
 		if r.accountChanged {
 			snapshot["state"] = "account-changed"
 		}
+		if r.bindingIssue != "" && r.bindingIssue != "pending" {
+			snapshot["context_status"] = "error"
+			snapshot["binding_reason"] = r.bindingIssue
+			snapshot["state"] = "error"
+		}
 		snapshots[id] = snapshot
 	}
 	c.metrics["account_queries"] = c.accounts.queryCount()
@@ -147,7 +167,7 @@ func (c *collector) tick(now time.Time) map[string]map[string]any {
 	return snapshots
 }
 func pending(meta map[string]any) map[string]any {
-	return map[string]any{"v": 1, "state": "pending", "model": nil, "effort": nil, "cwd": meta["cwd"], "branch": nil, "context_remaining": nil, "five_hour": nil, "weekly": nil, "activity": "waiting", "tool": nil, "elapsed": 0, "updated_at": nil, "quota_updated_at": nil, "session_id": nil, "quota_scope": nil}
+	return map[string]any{"v": 1, "runtime": meta["runtime"], "context_status": "pending", "identity_status": "unresolved", "state": "pending", "model": nil, "effort": nil, "cwd": meta["cwd"], "branch": nil, "context_remaining": nil, "five_hour": nil, "weekly": nil, "activity": "waiting", "tool": nil, "elapsed": 0, "updated_at": nil, "quota_updated_at": nil, "session_id": nil, "quota_scope": nil}
 }
 func stringValue(value any) string { v, _ := value.(string); return v }
 func number(value any) float64 {

@@ -70,7 +70,7 @@ func TestBindingLiveOpenedRoot(t *testing.T) {
 	}
 }
 func TestBindingRejectsUnsafeMetadata(t *testing.T) {
-	for name, changes := range map[string]map[string]any{"subagent": {"source": map[string]any{"subagent": true}}, "parent": {"parent_thread_id": bindingOther}, "version": {"cli_version": "0.144.1"}, "cwd": {"cwd": "/missing-project"}, "session": {"session_id": bindingOther}, "invalid": {"id": true}} {
+	for name, changes := range map[string]map[string]any{"subagent": {"source": map[string]any{"subagent": true}}, "parent": {"parent_thread_id": bindingOther}, "cwd": {"cwd": "/missing-project"}, "session": {"session_id": bindingOther}, "invalid": {"id": true}} {
 		t.Run(name, func(t *testing.T) {
 			meta, folder := bindingFixture(t)
 			path := writeBindingRoot(t, folder, bindingRoot, changes)
@@ -80,6 +80,20 @@ func TestBindingRejectsUnsafeMetadata(t *testing.T) {
 				t.Fatal("unsafe metadata accepted")
 			}
 		})
+	}
+}
+func TestBindingCompatibleVersions(t *testing.T) {
+	for _, version := range []any{"0.144.1", "0.162.0-alpha.2", "future-release", nil} {
+		meta, folder := bindingFixture(t)
+		path := writeBindingRoot(t, folder, bindingRoot, map[string]any{"cli_version": version})
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := BindRun(meta); got != path {
+			t.Errorf("compatible version %v rejected", version)
+		}
+		_ = f.Close()
 	}
 }
 func TestBindingClosedRootNotEvidence(t *testing.T) {

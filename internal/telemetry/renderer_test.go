@@ -76,6 +76,24 @@ func TestRenderReadyAndErrors(t *testing.T) {
 	}
 }
 
+func TestRenderAdaptiveWindows(t *testing.T) {
+	s := renderFixture()
+	delete(s, "five_hour")
+	row := Render(s, 220, false)[1]
+	if strings.Contains(row, "5H") || !strings.Contains(row, "7D") {
+		t.Fatal(row)
+	}
+	s["five_hour"] = map[string]any{"remaining": 100}
+	if row = Render(s, 220, false)[1]; !strings.Contains(row, "5H") || !strings.Contains(row, "0.0%") {
+		t.Fatal(row)
+	}
+	delete(s, "five_hour")
+	delete(s, "weekly")
+	if row = Render(s, 220, false)[1]; !strings.Contains(row, "Limits pending") || strings.Contains(row, "5H") {
+		t.Fatal(row)
+	}
+}
+
 func TestRenderCountdownAndBalancedTruncation(t *testing.T) {
 	for _, tc := range []struct {
 		at   float64

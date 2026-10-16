@@ -96,14 +96,14 @@ func TestEventsPartialAndAccountReset(t *testing.T) {
 }
 
 func TestEventsRejectHeadersAndSymlinks(t *testing.T) {
-	for _, change := range []string{"version", "owner", "symlink", "replacement"} {
+	for _, change := range []string{"source", "owner", "symlink", "replacement"} {
 		t.Run(change, func(t *testing.T) {
 			p, _ := eventFixture(t)
 			r := NewSessionReader(p, eventID)
 			switch change {
-			case "version":
+			case "source":
 				b, _ := os.ReadFile(p)
-				os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "0.153.4", "0.1.0")), 0600)
+				_ = os.WriteFile(p, []byte(strings.ReplaceAll(string(b), `"source":"cli"`, `"source":"other"`)), 0600)
 			case "owner":
 				r = NewSessionReader(p, "22222222-2222-7222-8222-222222222222")
 			case "symlink":
@@ -119,6 +119,24 @@ func TestEventsRejectHeadersAndSymlinks(t *testing.T) {
 				t.Fatal("unsafe header accepted")
 			}
 		})
+	}
+}
+func TestEventsCompatibleUnknownVersions(t *testing.T) {
+	for _, version := range []string{"0.144.1", "0.162.0-alpha.2", "future"} {
+		p, add := eventFixture(t)
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "0.153.4", version)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		add("event_msg", map[string]any{"type": "token_count", "info": map[string]any{"model_context_window": 475000, "last_token_usage": map[string]any{"total_tokens": 32000}}})
+		r := NewSessionReader(p, eventID)
+		s := r.Read()
+		if r.Invalidated || s["context_remaining"] == nil {
+			t.Fatalf("compatible %s rejected: %v", version, s)
+		}
 	}
 }
 func TestEventsQuotaScopeAndSanitization(t *testing.T) {

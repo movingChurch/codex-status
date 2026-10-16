@@ -250,6 +250,18 @@ func renderCapacity(s map[string]any, width int, now float64) []renderSegment {
 			label = "Ctx"
 		}
 		value := "n/a"
+		if !known {
+			switch s["context_status"] {
+			case "pending":
+				value = "pending"
+			case "unavailable":
+				value = "unavailable"
+			case "error":
+				value = "read failed"
+			case "stale":
+				value = "stale"
+			}
+		}
 		if known {
 			value = fmt.Sprintf("%.0f%%", math.Floor(context+0.5))
 		}
@@ -260,8 +272,13 @@ func renderCapacity(s map[string]any, width int, now float64) []renderSegment {
 			value = renderSlider(context) + " " + value
 		}
 		parts = []renderSegment{renderPart(label+" ", "label"), renderPart(value, "mint")}
+		observed := false
 		for _, q := range [][3]string{{"five_hour", "5H", "blue"}, {"weekly", "7D", "yellow"}} {
 			quota, _ := s[q[0]].(map[string]any)
+			if quota == nil {
+				continue
+			}
+			observed = true
 			n, ok := renderUsed(quota["remaining"])
 			value = "n/a"
 			if ok {
@@ -275,6 +292,34 @@ func renderCapacity(s map[string]any, width int, now float64) []renderSegment {
 				if countdown := renderCountdown(quota["resets_at"], now); countdown != "" {
 					parts = append(parts, renderPart(" ↻ ", "label"), renderSegment{countdown, "dim", s["usage_url"]})
 				}
+			}
+		}
+		if !observed {
+			parts = append(parts, renderPart(" │ Limits pending", "dim"))
+		}
+		if pools, ok := s["quota_pools"].([]any); ok {
+			for _, p := range pools {
+				q, _ := p.(map[string]any)
+				n, ok := renderUsed(q["remaining"])
+				if !ok {
+					continue
+				}
+				label := renderClean(q["label"])
+				parts = append(parts, renderPart(" │ "+label+" ", "label"), renderPart(fmt.Sprintf("%.1f%%", n), "yellow"))
+				if timers {
+					if countdown := renderCountdown(q["resets_at"], now); countdown != "" {
+						parts = append(parts, renderPart(" ↻ "+countdown, "dim"))
+					}
+				}
+			}
+			if len(pools) > 0 && !observed { // Replace aggregate placeholder when pools are present.
+				filtered := parts[:0]
+				for _, part := range parts {
+					if part.text != " │ Limits pending" {
+						filtered = append(filtered, part)
+					}
+				}
+				parts = filtered
 			}
 		}
 		if renderWidth(parts) <= width {
@@ -304,7 +349,7 @@ func renderActivity(s map[string]any, width int, now float64) []renderSegment {
 	if state == "" {
 		state = "Pending"
 	}
-	if key == "live" && !renderBound(s["session_id"]) {
+	if key == "live" && !renderBound(s["session_id"]) && ((s["runtime"] != "claude" && s["runtime"] != "antigravity") || renderClean(s["session_id"]) == "") {
 		state = "Connecting"
 	}
 	activity := map[string]string{"waiting": "Waiting", "working": "Working", "complete": "Complete", "interrupted": "Interrupted"}[renderClean(s["activity"])]
@@ -316,6 +361,9 @@ func renderActivity(s map[string]any, width int, now float64) []renderSegment {
 		reason = " · Unsupported quota"
 	}
 	text := state + reason + " · " + activity
+	if issue := map[string]string{"ambiguous-root": "Session ambiguous", "unsupported-root": "Incompatible session data", "resume-mismatch": "Resume mismatch", "inspection-failed": "Process inspection unavailable", "process-mismatch": "Process changed", "invalid-session": "Invalid session", "invalid-path": "Invalid path", "process-ended": "Session ended"}[renderClean(s["binding_reason"])]; issue != "" {
+		text = state + " · " + issue
+	}
 	if key == "ready" {
 		text = "Ready · Send a message to start session tracking"
 	}
@@ -360,6 +408,12 @@ func Render(snapshot map[string]any, width int, color bool) []string {
 	model := renderClean(snapshot["model"])
 	if model == "" || model == "—" {
 		model = "Codex"
+		if snapshot["runtime"] == "claude" {
+			model = "Claude Code"
+		}
+		if snapshot["runtime"] == "antigravity" {
+			model = "Antigravity"
+		}
 	}
 	first := []renderSegment{renderPart(model, "model")}
 	effort := renderClean(snapshot["effort"])
