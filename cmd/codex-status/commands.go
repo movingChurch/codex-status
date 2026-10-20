@@ -14,6 +14,7 @@ import (
 
 	"github.com/movingChurch/codex-status/internal/adapters"
 	"github.com/movingChurch/codex-status/internal/engine"
+	"github.com/movingChurch/codex-status/internal/install"
 	"github.com/movingChurch/codex-status/internal/setup"
 	"github.com/movingChurch/codex-status/internal/telemetry"
 )
@@ -100,6 +101,11 @@ func statusLine(kind string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return statusLineFor(self, kind), nil
+}
+
+// statusLineFor names an explicit executable, so install can point at the installed copy.
+func statusLineFor(self, kind string) map[string]any {
 	value := map[string]any{"type": "command", "command": shellCommand([]string{self, "__callback", kind}), "padding": 0}
 	if kind == "claude" {
 		// Statusline events go quiet while idle; the timer keeps the 180-second stale limit unmet.
@@ -109,7 +115,18 @@ func statusLine(kind string) (map[string]any, error) {
 		value["enabled"] = true
 		value["stack_with_default"] = false
 	}
-	return value, nil
+	return value
+}
+
+func antigravityReady() bool {
+	value, err := statusLine("antigravity")
+	path, pathErr := settingsPath("antigravity")
+	dir, dirErr := journalDir()
+	if err != nil || pathErr != nil || dirErr != nil {
+		return false
+	}
+	installed, err := setup.Installed(path, dir, value)
+	return err == nil && installed
 }
 
 // activityHooks registers the launch-scoped Claude events that report HUD activity.
@@ -165,7 +182,72 @@ func journalDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "codex-status", "settings"), nil
+	return filepath.Join(home, ".local", "state", install.Product, "settings"), nil
+}
+
+// installAll and uninstallAll back `runtime-status install` and `uninstall` without a runtime.
+func installOptions() (install.Options, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return install.Options{}, err
+	}
+	self, err := os.Executable()
+	if err == nil {
+		self, err = filepath.EvalSymlinks(self)
+	}
+	return install.Options{Home: home, Source: self, Busy: install.Busy, Out: os.Stdout}, err
+}
+func installAll() int {
+	o, err := installOptions()
+	if err != nil {
+		return 2
+	}
+	if _, e := exec.LookPath("agy"); e == nil {
+		o.Antigravity = func(binary string) error {
+			path, err := settingsPath("antigravity")
+			if err != nil {
+				return err
+			}
+			if _, e := os.Stat(install.LegacyJournal(o.Home)); e == nil {
+				if err = setup.Restore(path, install.LegacyJournal(o.Home)); err != nil {
+					return err
+				}
+			}
+			dir, err := journalDir()
+			if err == nil {
+				err = os.MkdirAll(filepath.Dir(path), 0700)
+			}
+			if err == nil {
+				err = setup.Install(path, dir, statusLineFor(binary, "antigravity"))
+			}
+			return err
+		}
+	}
+	if err = install.Install(o); err != nil {
+		fmt.Fprintln(os.Stderr, "runtime-status:", err)
+		return 2
+	}
+	fmt.Println("Open a new shell to use codex, claude and agy with the HUD.")
+	return 0
+}
+func uninstallAll() int {
+	o, err := installOptions()
+	if err != nil {
+		return 2
+	}
+	err = install.Uninstall(o, func() error {
+		path, err := settingsPath("antigravity")
+		dir, dirErr := journalDir()
+		if err != nil || dirErr != nil {
+			return errors.Join(err, dirErr)
+		}
+		return setup.Restore(path, dir)
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "runtime-status:", err)
+		return 2
+	}
+	return 0
 }
 func prepareNative(o runnerOptions, args []string) ([]string, error) {
 	value, err := statusLine(o.Kind)

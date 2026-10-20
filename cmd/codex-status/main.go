@@ -45,6 +45,12 @@ func run(args []string) int {
 			return launchRuntime(kind, strings.ToLower(native[1]), native[2:])
 		}
 		return launchRuntime(kind, "", native)
+	case len(args) == 1 && args[0] == "install":
+		return installAll()
+	case len(args) == 1 && args[0] == "uninstall":
+		return uninstallAll()
+	case len(args) >= 2 && args[0] == "wrap":
+		return wrapRuntime(args[1], args[2:])
 	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback" || args[0] == "__hook"):
 		return management(args)
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
@@ -142,7 +148,8 @@ func nativeExecutable() (string, error) {
 func wrap(args []string) int {
 	native, err := nativeExecutable()
 	if err != nil {
-		return 2
+		fmt.Fprintln(os.Stderr, "runtime-status: codex is not installed or not on PATH")
+		return 127
 	}
 	if len(args) >= 2 && args[0] == "resume" && uuidPattern.MatchString(strings.ToLower(args[1])) {
 		if _, _, err := parseLaunch(append([]string{"--resume", args[1], "--"}, args[2:]...)); err == nil {
