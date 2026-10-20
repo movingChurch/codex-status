@@ -155,7 +155,7 @@ func accountFetch(parent context.Context, home, executable string) (map[string]a
 		}
 		return nil, io.EOF
 	}
-	if err = encoder.Encode(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{"clientInfo": map[string]any{"name": "codex_status", "version": "0.1.0"}}}); err != nil {
+	if err = encoder.Encode(map[string]any{"id": 1, "method": "initialize", "params": map[string]any{"clientInfo": map[string]any{"name": "runtime_status", "version": "0.1.0"}}}); err != nil {
 		return nil, err
 	}
 	if _, err = response(1); err != nil {

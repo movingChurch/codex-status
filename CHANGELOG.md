@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (runtime-status)
+
+- Rename the project from codex-status to runtime-status: command, Go module, `RUNTIME_STATUS_` environment variables, `/tmp/runtime-status-<uid>` runtime directory and `~/.local/state/runtime-status` state directory.
+- Add `runtime-status install` and `uninstall` with zsh functions for `codex`, `claude` and `agy`, and `runtime-status wrap <runtime>`.
+- Migrate codex-status installs: matching old `codex-status` and `claude-hud` zsh blocks and executables are backed up and removed, the Antigravity callback moves to the new executable, and files in use by running sessions are kept until a later install.
+- Show Claude effort, cache hit rate, hook-driven activity and the Claude usage link.
+
 ## 0.2.0-alpha.1
 
 - Replace the Python launcher, collector, and display stack with one Go executable.

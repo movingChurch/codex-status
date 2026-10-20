@@ -24,6 +24,6 @@ jobs:
         run: ./scripts/build-release.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: codex-status-macos
+          name: runtime-status-macos
           path: dist/*
           if-no-files-found: error

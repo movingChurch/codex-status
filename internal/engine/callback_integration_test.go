@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/telemetry"
+	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
 func TestCallbackIPCAndNativeRegistrationLifetime(t *testing.T) {

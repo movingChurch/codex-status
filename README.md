@@ -1,4 +1,4 @@
-# Codex Status
+# Runtime Status
 
 **Your model, context, and quota. Right below your CLI session.**
 
@@ -16,37 +16,35 @@ Download the macOS archive for your architecture from a release that includes Go
 
 ```sh
 ./install.sh
-codex-status
 ```
 
-The installer copies the executable into `~/.local/bin`. Add that directory to PATH if needed. After installation, you can remove the extracted archive. Existing Python releases do not include these binaries.
+Or build from this checkout with Go 1.25 or later and run the same script. `./install.sh` finds or builds the executable and runs `runtime-status install`, which:
 
-To install somewhere else:
+1. copies the executable to `~/.local/bin/runtime-status`,
+2. installs the Antigravity statusLine callback when `agy` is on PATH, keeping the prior setting for restoration,
+3. adds one marked block to `~/.zshrc` with `codex`, `claude` and `agy` functions.
 
-```sh
-./install.sh --bin-dir /absolute/path/to/bin
-```
-
-Or build from this checkout with Go 1.25 or later:
-
-```sh
-go test ./...
-./install.sh
-```
-
-The official `codex` executable and tmux must be on PATH. The installer does not change the official Codex command. It refuses to replace unrelated files or symlinks.
+Open a new zsh shell afterwards. Repeating the install changes nothing; an interrupted install is completed by the next run. Shell integration supports zsh only, and a symlinked `~/.zshrc` is refused. The official CLIs and tmux must be on PATH; their executables are never changed.
 
 ## Everyday use
 
+After installation, run the native commands as usual. Interactive launches open inside the HUD; non-interactive calls, informational flags and management subcommands, such as `claude -p` or `agy models`, pass through to the official CLI unchanged.
+
 ```sh
-codex-status
-codex-status --resume SESSION-UUID
-codex-status -- --model MODEL
-codex-status run claude --
-codex-status setup antigravity
-codex-status run antigravity --
-codex-status doctor claude
-codex-status preview antigravity
+codex
+claude
+agy
+```
+
+The executable can also be called directly:
+
+```sh
+runtime-status wrap claude [native arguments]
+runtime-status --resume SESSION-UUID
+runtime-status -- --model MODEL
+runtime-status run antigravity --
+runtime-status doctor claude
+runtime-status preview antigravity
 ```
 
 - **Scroll:** use the mouse wheel over the Codex pane. Scrolling enters tmux history, rather than recalling earlier input. Press `q` to return to the live pane.
@@ -56,13 +54,13 @@ codex-status preview antigravity
 
 The launcher's dedicated tmux server enables mouse handling and hides the default tmux status bar. It does not read or change your personal tmux configuration. Terminal text selection may require holding Shift while dragging.
 
-For optional shell integration, call `codex-status --wrap` with your original Codex arguments. Explicit UUID resumes open with the HUD; informational commands and unsupported entry modes pass through to the official CLI. `CODEX_STATUS_CODEX` can select its executable path.
+For Codex, explicit UUID resumes open with the HUD; informational commands and unsupported entry modes pass through to the official CLI. `RUNTIME_STATUS_CODEX`, `RUNTIME_STATUS_CLAUDE` and `RUNTIME_STATUS_ANTIGRAVITY` can select each native executable path.
 
 All launches share one owned tmux server with separate sessions. List or reattach using your user ID and the run's UUID:
 
 ```sh
-tmux -S /tmp/codex-status-go-UID/tmux.sock list-sessions
-tmux -S /tmp/codex-status-go-UID/tmux.sock attach -t hud-RUN-UUID
+tmux -S /tmp/runtime-status-UID/tmux.sock list-sessions
+tmux -S /tmp/runtime-status-UID/tmux.sock attach -t hud-RUN-UUID
 ```
 
 ## Display
@@ -77,7 +75,7 @@ Bars and percentages show **used** capacity. Codex context follows its validated
 
 Before the first prompt, Codex account quota can already appear. Until a native session identity exists, the HUD displays a ready state; Antigravity's empty startup IDs are pending. Billing estimates, aggregate agent progress, and indirect Codex resume selectors are outside the current scope.
 
-Claude receives a per-launch statusLine override with a 15-second refresh and activity hooks; an explicit settings file is merged privately without modifying the original. Antigravity requires explicit setup because its documented callback is persistent. `codex-status uninstall antigravity` restores the prior selected setting while preserving unrelated changes. Unwrapped sessions dispatch the prior custom command when available. A native conversation change without an authoritative transition signal requires relaunching its HUD wrapper.
+Claude receives a per-launch statusLine override with a 15-second refresh and activity hooks; an explicit settings file is merged privately without modifying the original. Antigravity's documented callback is persistent, so `runtime-status install` sets it up; `runtime-status uninstall` (or `runtime-status uninstall antigravity` alone) restores the prior selected setting while preserving unrelated changes. Unwrapped sessions dispatch the prior custom command when available. A native conversation change without an authoritative transition signal requires relaunching its HUD wrapper.
 
 Colored output includes terminal hyperlinks: directory opens the local folder, branch opens its Git remote, quota opens the runtime's usage page (Codex or Claude), and elapsed opens the exact session log. In Orca on macOS, use Cmd-click. The terminal controls the required modifier. Embedded Git credentials are stripped from links.
 
@@ -89,7 +87,7 @@ Hidden panels pause rollout reads. Codex views share one startup quota observati
 
 The scoped-account registry merges only verified service/principal/billing-realm identities and keeps context separate per session. Current native surfaces do not prove that scope for each live process, so **native verified-account merging is unavailable in this alpha**. Those connections remain isolated within the same manager. See [account sharing](docs/shared-hud/account-sharing.md).
 
-Each launcher forwards its environment to its runner over a private one-use socket before replacing itself with the tmux client. Environment contents are never stored in runtime files or logs. Optional idle worker retention defaults to 30 seconds; `CODEX_STATUS_IDLE_GRACE_SECONDS` accepts 0–60 seconds when starting a new manager.
+Each launcher forwards its environment to its runner over a private one-use socket before replacing itself with the tmux client. Environment contents are never stored in runtime files or logs. Optional idle worker retention defaults to 30 seconds; `RUNTIME_STATUS_IDLE_GRACE_SECONDS` accepts 0–60 seconds when starting a new manager.
 
 Only selected telemetry fields leave the rollout reader. Read budgets, record size limits, and terminal sanitization bound processing. Runtime metadata does not contain prompts, tool arguments, or environment contents. Local processes running as your user share the runtime trust boundary.
 
@@ -107,15 +105,15 @@ Previous Python/native-client CPU measurements do not characterize this Go imple
 
 ## Update and uninstall
 
-Install the new archive over the existing executable with `./install.sh`. Running sessions continue using their existing process. Finish v0.2 HUD sessions before starting v0.3: the launcher preserves an incompatible running manager and reports the upgrade requirement instead of starting a duplicate. New sessions use the new version.
+Run `./install.sh` from the new archive. Running sessions continue using their existing process; new sessions use the new version. If an incompatible manager is still running, the launcher reports the upgrade requirement instead of starting a duplicate.
 
-For migration from the Python installer, first preserve or remove the old `codex-status` symlink, then install the Go executable. Keep the old checkout until its running sessions have exited; they may still import its Python modules. Go uses a separate collector directory and does not replace those sessions.
+`runtime-status install` also migrates installs made under the project's former name (see the [changelog](CHANGELOG.md)): it backs up and removes the old shell blocks in `~/.zshrc` when they match the original text, moves the Antigravity callback to the new executable, and removes the old executables. Files a running session still uses are kept and reported; run the install again after those sessions exit. Backups are kept in `~/.local/state/runtime-status/`.
 
-To uninstall a default installation, remove `~/.local/bin/codex-status`. Remove any shell integration you added. Leave runtime sockets in place until their sessions finish.
+`runtime-status uninstall` removes the shell block, restores the prior Antigravity setting and removes the executable; backups stay. Leave runtime sockets in place until their sessions finish.
 
 ## Feedback and license
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Include OS, architecture, tmux, Codex, and Codex Status versions. Do not attach raw session logs or authentication files.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Include OS, architecture, tmux, Codex, and Runtime Status versions. Do not attach raw session logs or authentication files.
 
 Project code uses Apache-2.0, with Apple-derived Darwin ABI material under APSL-2.0 and purego under Apache-2.0. See [NOTICE](NOTICE) and [LICENSES](LICENSES/).
 

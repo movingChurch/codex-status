@@ -1,4 +1,4 @@
-// Codex Status launches the stock CLI with a dedicated, shared-collector HUD.
+// Runtime Status launches the stock CLI with a dedicated, shared-collector HUD.
 package main
 
 import (
@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/engine"
-	"github.com/movingChurch/codex-status/internal/telemetry"
+	"github.com/movingChurch/runtime-status/internal/engine"
+	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
 var version = "0.3.0-alpha.1"
@@ -54,10 +54,10 @@ func run(args []string) int {
 	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback" || args[0] == "__hook"):
 		return management(args)
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
-		fmt.Println("Usage: codex-status [--resume UUID] [-- Codex arguments]\n       codex-status run codex|claude|antigravity -- [native arguments]\n       codex-status preview|doctor [runtime]\n       codex-status setup|uninstall claude|antigravity [--settings PATH]\n\nShared three-row tmux HUD. Codex requires no settings modification.\nClaude uses a per-launch override. Antigravity requires explicit setup.\n  --version     Print version\n  --wrap        Transparent codex shell integration\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit the native CLI normally to close its HUD.")
+		fmt.Println("Usage: runtime-status install|uninstall\n       runtime-status wrap codex|claude|antigravity [native arguments]\n       runtime-status [--resume UUID] [-- Codex arguments]\n       runtime-status run codex|claude|antigravity -- [native arguments]\n       runtime-status preview|doctor [runtime]\n       runtime-status setup|uninstall claude|antigravity [--settings PATH]\n\nShared three-row tmux HUD for Codex, Claude Code and Antigravity.\ninstall places the binary in ~/.local/bin, the codex, claude and agy zsh\nfunctions in ~/.zshrc and the Antigravity callback; uninstall reverses it.\n  --version     Print version\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit the native CLI normally to close its HUD.")
 		return 0
 	case len(args) == 1 && args[0] == "--version":
-		fmt.Println("codex-status " + version)
+		fmt.Println("runtime-status " + version)
 		return 0
 	case len(args) > 0 && args[0] == "--wrap":
 		return wrap(args[1:])
@@ -80,7 +80,7 @@ func run(args []string) int {
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "codex-status: could not start. Check arguments, tmux, Codex, and the private runtime directory.")
+		fmt.Fprintln(os.Stderr, "runtime-status: could not start. Check arguments, tmux, Codex, and the private runtime directory.")
 		return 2
 	}
 	return 0
@@ -117,7 +117,7 @@ func parseLaunch(args []string) (string, []string, error) {
 }
 
 func nativeExecutable() (string, error) {
-	name := os.Getenv("CODEX_STATUS_CODEX")
+	name := os.Getenv("RUNTIME_STATUS_CODEX")
 	if name == "" {
 		name = "codex"
 	}
@@ -201,7 +201,7 @@ func tmuxCall(socket string, args ...string) (string, error) {
 }
 func launch(resume string, args []string) int { return launchRuntime("codex", resume, args) }
 func launchRuntime(kind, resume string, args []string) int {
-	runtimeDir, err := engine.ValidateRuntime(filepath.Join("/tmp", fmt.Sprintf("codex-status-go-%d", os.Getuid())))
+	runtimeDir, err := engine.ValidateRuntime(filepath.Join("/tmp", fmt.Sprintf("runtime-status-%d", os.Getuid())))
 	if err != nil {
 		return 2
 	}
@@ -236,11 +236,11 @@ func launchRuntime(kind, resume string, args []string) int {
 	words = append(words, "--")
 	words = append(words, args...)
 	if err = engine.EnsureCollector(runtimeDir); err != nil {
-		fmt.Fprintln(os.Stderr, "codex-status: manager unavailable")
+		fmt.Fprintln(os.Stderr, "runtime-status: manager unavailable")
 		return 2
 	}
 	if engine.Handshake(runtimeDir) != nil {
-		fmt.Fprintln(os.Stderr, "codex-status: running manager is incompatible; finish its sessions before upgrading")
+		fmt.Fprintln(os.Stderr, "runtime-status: running manager is incompatible; finish its sessions before upgrading")
 		return 2
 	}
 	relay, relayErr := startLaunchEnvironment(runtimeDir, id, os.Environ())
@@ -271,7 +271,7 @@ func launchRuntime(kind, resume string, args []string) int {
 	if err != nil || !panePattern.MatchString(hud) || hud == pane {
 		return 2
 	}
-	if _, err = tmuxCall(socket, "set-option", "-w", "-t", pane, "@codex_status_hud", hud); err != nil {
+	if _, err = tmuxCall(socket, "set-option", "-w", "-t", pane, "@runtime_status_hud", hud); err != nil {
 		return 2
 	}
 	if _, err = tmuxCall(socket, "select-pane", "-t", pane); err != nil {
@@ -377,7 +377,7 @@ func runner(o runnerOptions) int {
 	if _, err := tmuxCall(o.Socket, "wait-for", "ready-"+o.Run); err != nil {
 		return 2
 	}
-	hud, err := tmuxCall(o.Socket, "show-options", "-wqv", "-t", pane, "@codex_status_hud")
+	hud, err := tmuxCall(o.Socket, "show-options", "-wqv", "-t", pane, "@runtime_status_hud")
 	if err != nil || !panePattern.MatchString(hud) || hud == pane {
 		return 2
 	}
@@ -422,13 +422,13 @@ func runner(o runnerOptions) int {
 		var prepareErr error
 		nativeArgs, prepareErr = prepareNative(o, nativeArgs)
 		if prepareErr != nil {
-			fmt.Fprintln(os.Stderr, "codex-status:", prepareErr)
+			fmt.Fprintln(os.Stderr, "runtime-status:", prepareErr)
 			return 2
 		}
 		defer func() { _ = os.Remove(filepath.Join(o.Runtime, "launch-"+o.Run+".json")) }()
 	}
 	cmd := exec.Command(o.Codex, nativeArgs...)
-	cmd.Env = append(os.Environ(), "CODEX_STATUS_RUN="+o.Run, "CODEX_STATUS_RUNTIME_DIR="+o.Runtime)
+	cmd.Env = append(os.Environ(), "RUNTIME_STATUS_RUN="+o.Run, "RUNTIME_STATUS_RUNTIME_DIR="+o.Runtime)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

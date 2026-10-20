@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/movingChurch/codex-status/internal/install"
-	"github.com/movingChurch/codex-status/internal/setup"
+	"github.com/movingChurch/runtime-status/internal/install"
+	"github.com/movingChurch/runtime-status/internal/setup"
 )
 
 func TestPassthroughPerRuntime(t *testing.T) {

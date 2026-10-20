@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/telemetry"
+	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
 type telemetrySession struct{ reader *telemetry.SessionReader }

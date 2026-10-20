@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/accounts"
+	"github.com/movingChurch/runtime-status/internal/accounts"
 )
 
 type identityResult struct {

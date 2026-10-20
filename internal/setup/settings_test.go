@@ -408,7 +408,7 @@ func TestRejectFIFOLock(t *testing.T) {
 }
 
 func TestAntigravitySparseNativeDefaults(t *testing.T) {
-	command := "'/tmp/codex-status' '__callback' 'antigravity'"
+	command := "'/tmp/runtime-status' '__callback' 'antigravity'"
 	installed := map[string]any{"type": "command", "command": command, "enabled": true, "padding": 0, "stack_with_default": false}
 	for _, edit := range []string{"defaults-omitted", "padding-nonzero", "stack-true", "unknown-field", "changed-command"} {
 		t.Run(edit, func(t *testing.T) {

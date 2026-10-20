@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/accounts"
+	"github.com/movingChurch/runtime-status/internal/accounts"
 )
 
 func TestCallbackTicketsAndSessionPin(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/engine"
+	"github.com/movingChurch/runtime-status/internal/engine"
 )
 
 const launchEnvironmentLimit = 1 << 20

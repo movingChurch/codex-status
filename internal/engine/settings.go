@@ -9,7 +9,7 @@ import (
 
 // idleWorkerGrace is a bounded manager setting, expressed in whole seconds.
 func idleWorkerGrace() (time.Duration, error) {
-	value := os.Getenv("CODEX_STATUS_IDLE_GRACE_SECONDS")
+	value := os.Getenv("RUNTIME_STATUS_IDLE_GRACE_SECONDS")
 	if value == "" {
 		return 30 * time.Second, nil
 	}

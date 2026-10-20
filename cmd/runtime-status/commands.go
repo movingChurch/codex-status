@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/adapters"
-	"github.com/movingChurch/codex-status/internal/engine"
-	"github.com/movingChurch/codex-status/internal/install"
-	"github.com/movingChurch/codex-status/internal/setup"
-	"github.com/movingChurch/codex-status/internal/telemetry"
+	"github.com/movingChurch/runtime-status/internal/adapters"
+	"github.com/movingChurch/runtime-status/internal/engine"
+	"github.com/movingChurch/runtime-status/internal/install"
+	"github.com/movingChurch/runtime-status/internal/setup"
+	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
 func ownedSocket(o runnerOptions) bool {
@@ -62,10 +62,10 @@ func runtimeExecutable(kind string) (string, error) {
 	if kind == "codex" {
 		return nativeExecutable()
 	}
-	name, override := "claude", "CODEX_STATUS_CLAUDE"
+	name, override := "claude", "RUNTIME_STATUS_CLAUDE"
 	if kind == "antigravity" {
 		name = "agy"
-		override = "CODEX_STATUS_ANTIGRAVITY"
+		override = "RUNTIME_STATUS_ANTIGRAVITY"
 	}
 	if value := os.Getenv(override); value != "" {
 		name = value
@@ -336,7 +336,7 @@ func prepareNative(o runnerOptions, args []string) ([]string, error) {
 		return nil, err
 	}
 	if !installed {
-		return nil, errors.New("antigravity requires explicit `codex-status setup antigravity` before managed launch")
+		return nil, errors.New("antigravity requires explicit `runtime-status setup antigravity` before managed launch")
 	}
 	return args, nil
 }
@@ -385,7 +385,7 @@ func management(args []string) int {
 		return 0
 	}
 	if kind == "codex" {
-		fmt.Fprintln(os.Stderr, "codex-status: Codex needs no statusLine setting")
+		fmt.Fprintln(os.Stderr, "runtime-status: Codex needs no statusLine setting")
 		return 2
 	}
 	path, err := settingsPath(kind)
@@ -415,7 +415,7 @@ func management(args []string) int {
 		err = setup.Restore(path, dir)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "codex-status:", err)
+		fmt.Fprintln(os.Stderr, "runtime-status:", err)
 		return 2
 	}
 	fmt.Printf("%s %s statusLine: complete\n", command, kind)
@@ -425,7 +425,7 @@ func management(args []string) int {
 // callback is intentionally silent: the shared tmux pane owns presentation.
 func callback(kind string) int {
 	deadline := time.Now().Add(engine.CallbackBudget)
-	id, root := os.Getenv("CODEX_STATUS_RUN"), os.Getenv("CODEX_STATUS_RUNTIME_DIR")
+	id, root := os.Getenv("RUNTIME_STATUS_RUN"), os.Getenv("RUNTIME_STATUS_RUNTIME_DIR")
 	if !uuidPattern.MatchString(id) || root == "" {
 		return previousCallback(kind, deadline)
 	}
@@ -483,7 +483,7 @@ func callback(kind string) int {
 // so a missing or slow manager never blocks or changes the native turn.
 func hook() int {
 	deadline := time.Now().Add(engine.CallbackBudget)
-	id, root := os.Getenv("CODEX_STATUS_RUN"), os.Getenv("CODEX_STATUS_RUNTIME_DIR")
+	id, root := os.Getenv("RUNTIME_STATUS_RUN"), os.Getenv("RUNTIME_STATUS_RUNTIME_DIR")
 	if !uuidPattern.MatchString(id) || root == "" {
 		return 0
 	}

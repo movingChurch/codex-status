@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/adapters"
+	"github.com/movingChurch/runtime-status/internal/adapters"
 )
 
 type renderFunc func(map[string]any, int, bool) []string

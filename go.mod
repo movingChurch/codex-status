@@ -1,4 +1,4 @@
-module github.com/movingChurch/codex-status
+module github.com/movingChurch/runtime-status
 
 go 1.25.0
 

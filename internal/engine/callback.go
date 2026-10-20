@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/movingChurch/codex-status/internal/accounts"
-	"github.com/movingChurch/codex-status/internal/telemetry"
+	"github.com/movingChurch/runtime-status/internal/accounts"
+	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
 // CallbackBudget bounds the entire short-lived callback, including stdin.

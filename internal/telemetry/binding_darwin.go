@@ -28,7 +28,7 @@
 // @APPLE_OSREFERENCE_LICENSE_HEADER_END@
 //
 //
-// Modified 2026-09-08 for codex-status: selected C ABI declarations translated
+// Modified 2026-09-08 for runtime-status: selected C ABI declarations translated
 // to Go byte buffers and native libproc calls.
 // Original source: Apple macOS SDK, sys/proc_info.h.
 // Public source reference:

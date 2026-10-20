@@ -15,7 +15,7 @@ const maxMessage = 16384
 
 func ValidateRuntime(path string) (string, error) {
 	if path == "" {
-		path = filepath.Join("/tmp", fmt.Sprintf("codex-status-go-%d", os.Getuid()))
+		path = filepath.Join("/tmp", fmt.Sprintf("runtime-status-%d", os.Getuid()))
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {
