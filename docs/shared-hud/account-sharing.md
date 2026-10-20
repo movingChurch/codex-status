@@ -37,4 +37,8 @@ Limit kept: account-level native merging stays unavailable, because no runtime r
 
 - Codex window on `~/.codex`: `account use codex yes@holyground.world --yes` rewrote `~/.codex/auth.json` to that account, relaunched the window, named a window on Orca's account home as skipped, and the relaunched HUD showed `yes@holyground.world` with 5H/7D matching `account list --json`.
 - HUD click: a click on the label opened the account menu; picking the other account and confirming switched back and relaunched the window.
-- Claude windows on Orca's profile home showed no label; a Claude window on `~/.claude` showed `seong9115@gmail.com`.
+- Claude from an Orca terminal: `account use claude yes@holyground.world --yes` relaunched both windows on `~/.claude`, named six windows on Orca's profile home as skipped, and the relaunched HUDs showed `yes@holyground.world` with 5H/7D matching `account list --json`; `claude auth status` reported the same account.
+- Five minutes later `account list` current still matched the live logins of both runtimes.
+- Claude HUD click: the menu switched back to `seong9115@gmail.com`, relaunched both windows, and their 5H/7D matched that account's recorded reading.
+- Windows on Orca's homes showed no label.
+- Found and fixed on the way: Keychain items with a newline read back as hex; a menu whose first item was the disabled current account was read as a flag; a stale login of the account in use is now renewed by signing in to it again.
