@@ -30,6 +30,8 @@ type callbackState struct {
 	updated            time.Time
 	diagnostic         string
 	diagnostics        map[string]any
+	// Hook activity is kept apart from statusline data, which each payload replaces.
+	activity, activitySession string
 }
 type callbackStore struct {
 	tickets  map[string]callbackTicket
@@ -120,6 +122,17 @@ func (s *callbackStore) update(id, epoch, token string, data map[string]any, now
 	}
 	return true
 }
+
+// activity records a Claude hook event in arrival order; hooks run synchronously,
+// so the manager receives one session's events in firing order.
+func (s *callbackStore) activity(id, epoch, session, activity string) bool {
+	r := s.runs[id]
+	if r == nil || r.epoch != epoch || (r.session != "" && r.session != session) {
+		return false
+	}
+	r.activity, r.activitySession = activity, session
+	return true
+}
 func (s *callbackStore) snapshot(id string, now time.Time) map[string]any {
 	r := s.runs[id]
 	if r != nil && r.diagnostic == "session-pending" {
@@ -133,6 +146,9 @@ func (s *callbackStore) snapshot(id string, now time.Time) map[string]any {
 	}
 	out := map[string]any{}
 	merge(out, r.data)
+	if r.activity != "" && r.activitySession == r.session {
+		out["activity"] = r.activity
+	}
 	if key := s.scopes[id]; key != "" {
 		merge(out, s.quota[key])
 	}

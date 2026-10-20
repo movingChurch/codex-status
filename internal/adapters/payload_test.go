@@ -173,3 +173,50 @@ func TestDiagnoseRejections(t *testing.T) {
 		t.Fatal(props)
 	}
 }
+
+func TestClaudeEffortCacheAndDirectory(t *testing.T) {
+	tests := []struct {
+		name, payload           string
+		effort, cwd             any
+		cached, input, hitInput any
+	}{
+		{"effort and cache reads", `{"session_id":"s","effort":{"level":"high"},"workspace":{"project_dir":"/launch","current_dir":"/launch/sub"},"context_window":{"current_usage":{"input_tokens":2,"cache_creation_input_tokens":8,"cache_read_input_tokens":90}}}`, "high", "/launch", float64(90), float64(100), nil},
+		{"absent effort and null usage", `{"session_id":"s","workspace":{"current_dir":"/current"},"context_window":{"current_usage":null}}`, nil, "/current", nil, nil, nil},
+		{"zero usage", `{"session_id":"s","cwd":"/cwd","context_window":{"current_usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}`, nil, "/cwd", nil, nil, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := Normalize("claude", []byte(tt.payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out["effort"] != tt.effort || out["cwd"] != tt.cwd || out["cached_tokens"] != tt.cached || out["input_tokens"] != tt.input {
+				t.Fatal(out)
+			}
+		})
+	}
+}
+
+func TestNormalizeHook(t *testing.T) {
+	for event, activity := range HookEvents {
+		payload := `{"session_id":"s","hook_event_name":"` + event + `","prompt":"private","tool_input":{"k":"secret"}`
+		if event == "Notification" {
+			payload += `,"notification_type":"permission_prompt"`
+		}
+		out, err := NormalizeHook([]byte(payload + `}`))
+		if err != nil || out["activity"] != activity || out["session_id"] != "s" || len(out) != 2 {
+			t.Fatal(event, out, err)
+		}
+	}
+	for _, payload := range []string{
+		`{"session_id":"s","hook_event_name":"Notification","notification_type":"auth_success"}`,
+		`{"session_id":"s","hook_event_name":"SessionStart"}`,
+		`{"session_id":"","hook_event_name":"Stop"}`,
+		`{"hook_event_name":"Stop"}`,
+		`not json`,
+	} {
+		if out, err := NormalizeHook([]byte(payload)); err == nil {
+			t.Fatal(payload, out)
+		}
+	}
+}

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/movingChurch/codex-status/internal/adapters"
 )
 
 type renderFunc func(map[string]any, int, bool) []string
@@ -234,7 +236,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				}
 				var usage syscall.Rusage
 				_ = syscall.Getrusage(syscall.RUSAGE_CHILDREN, &usage)
-				state := map[string]any{"v": 1, "protocol": 2, "capabilities": []string{"callback-ticket", "adaptive-metrics", "shared-tmux"}, "started": processIdentity(), "pid": os.Getpid(), "clients": len(clients), "runs": len(c.runs), "metrics": c.metrics, "head_reads": headReads, "children_cpu_seconds": float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6}
+				state := map[string]any{"v": 1, "protocol": 2, "capabilities": []string{"callback-ticket", "adaptive-metrics", "shared-tmux", "hook-activity"}, "started": processIdentity(), "pid": os.Getpid(), "clients": len(clients), "runs": len(c.runs), "metrics": c.metrics, "head_reads": headReads, "children_cpu_seconds": float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6}
 				state["callback_frames"] = frames
 				state["callback_tickets"] = tickets
 				state["callback_rejections"] = rejections
@@ -254,7 +256,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 				event.conn.Close()
 				continue
 			}
-			if op := stringValue(event.value["op"]); op == "ticket" || op == "publish" || op == "reject" || op == "pending" {
+			if op := stringValue(event.value["op"]); op == "ticket" || op == "publish" || op == "reject" || op == "pending" || op == "activity" {
 				response := map[string]any{"error": "invalid-registration"}
 				if liveMetadata(meta) && (meta["runtime"] == "claude" || meta["runtime"] == "antigravity") {
 					epoch := stringValue(meta["started"]) + AuthGeneration(stringValue(meta["runtime"]), stringValue(meta["home"]))
@@ -265,6 +267,15 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					case "reject":
 						if callbacks.reject(id, epoch, stringValue(event.value["ticket"]), time.Now()) {
 							callbacks.runs[id].diagnostics, _ = event.value["diagnostics"].(map[string]any)
+							response = map[string]any{"v": 1, "accepted": true}
+						}
+					case "activity":
+						activity := stringValue(event.value["activity"])
+						known := false
+						for _, v := range adapters.HookEvents {
+							known = known || v == activity
+						}
+						if meta["runtime"] == "claude" && known && callbacks.activity(id, epoch, stringValue(event.value["session_id"]), activity) {
 							response = map[string]any{"v": 1, "accepted": true}
 						}
 					case "pending":

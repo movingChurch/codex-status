@@ -45,7 +45,7 @@ func run(args []string) int {
 			return launchRuntime(kind, strings.ToLower(native[1]), native[2:])
 		}
 		return launchRuntime(kind, "", native)
-	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback"):
+	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback" || args[0] == "__hook"):
 		return management(args)
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
 		fmt.Println("Usage: codex-status [--resume UUID] [-- Codex arguments]\n       codex-status run codex|claude|antigravity -- [native arguments]\n       codex-status preview|doctor [runtime]\n       codex-status setup|uninstall claude|antigravity [--settings PATH]\n\nShared three-row tmux HUD. Codex requires no settings modification.\nClaude uses a per-launch override. Antigravity requires explicit setup.\n  --version     Print version\n  --wrap        Transparent codex shell integration\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit the native CLI normally to close its HUD.")

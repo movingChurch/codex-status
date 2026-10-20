@@ -13,6 +13,17 @@ import (
 
 const linkUsageURL = "https://chatgpt.com/codex/settings/usage"
 
+// UsageURL returns the runtime's own usage page, or nil when it publishes none.
+func UsageURL(runtime any) any {
+	switch runtime {
+	case "claude":
+		return "https://claude.ai/settings/usage"
+	case "antigravity":
+		return nil
+	}
+	return linkUsageURL
+}
+
 var linkSCP = regexp.MustCompile(`^(?:[^/@:]+@)?([A-Za-z0-9.-]+):(.+)$`)
 var linkHost = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 

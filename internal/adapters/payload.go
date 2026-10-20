@@ -72,12 +72,16 @@ func Normalize(runtime string, raw []byte) (map[string]any, error) {
 	if _, ok := out["model"]; !ok {
 		copyText(out, "model", model["id"], 256)
 	}
-	copyText(out, "cwd", object(root["workspace"])["current_dir"], 4096)
-	if _, ok := out["cwd"]; !ok {
-		copyText(out, "cwd", root["cwd"], 4096)
+	// The launch directory keeps the label consistent with the manager's branch and links.
+	workspace := object(root["workspace"])
+	for _, v := range []any{workspace["project_dir"], workspace["current_dir"], root["cwd"]} {
+		if _, ok := out["cwd"]; !ok {
+			copyText(out, "cwd", v, 4096)
+		}
 	}
 	context(out, object(root["context_window"]))
 	if runtime == "claude" {
+		copyText(out, "effort", object(root["effort"])["level"], 32)
 		limits := object(root["rate_limits"])
 		for src, dst := range map[string]string{"five_hour": "five_hour", "seven_day": "weekly"} {
 			w := object(limits[src])
@@ -140,6 +144,46 @@ func Normalize(runtime string, raw []byte) (map[string]any, error) {
 	return out, nil
 }
 
+// HookEvents maps the Claude hook events the launcher registers to HUD activity.
+// A user interrupt fires none of them, so Working remains until the next event.
+var HookEvents = map[string]string{
+	"UserPromptSubmit":   "working",
+	"PreToolUse":         "working",
+	"PostToolUse":        "working",
+	"PostToolUseFailure": "working",
+	"Stop":               "complete",
+	"StopFailure":        "interrupted",
+	"Notification":       "waiting",
+}
+
+// NormalizeHook keeps only the session ID and the activity of one Claude hook input.
+func NormalizeHook(raw []byte) (map[string]any, error) {
+	if len(raw) > maxPayload || !utf8.Valid(raw) {
+		return nil, errPayload
+	}
+	var root struct {
+		Session      json.RawMessage `json:"session_id"`
+		Event        string          `json:"hook_event_name"`
+		Notification string          `json:"notification_type"`
+	}
+	if json.Unmarshal(raw, &root) != nil {
+		return nil, errPayload
+	}
+	var session any
+	if json.Unmarshal(root.Session, &session) != nil {
+		return nil, errPayload
+	}
+	id, ok := printable(session, 512)
+	activity := HookEvents[root.Event]
+	if !ok || activity == "" {
+		return nil, errPayload
+	}
+	if root.Event == "Notification" && root.Notification != "permission_prompt" && root.Notification != "idle_prompt" {
+		return nil, errPayload
+	}
+	return map[string]any{"session_id": id, "activity": activity}, nil
+}
+
 func context(out map[string]any, c map[string]any) {
 	capacity, capOK := number(c["context_window_size"])
 	if capOK && capacity > 0 {
@@ -151,19 +195,16 @@ func context(out map[string]any, c map[string]any) {
 	input, iok := number(usage["input_tokens"])
 	creation, cok := number(usage["cache_creation_input_tokens"])
 	read, rok := number(usage["cache_read_input_tokens"])
-	if iok {
-		out["input_tokens"] = input
-	} else if total, ok := number(c["total_input_tokens"]); ok {
-		out["input_tokens"] = total
-	}
-	if cok && rok && creation+read <= maxSafe {
-		out["cached_tokens"] = creation + read
-	}
+	// Hit rate counts cache reads over all input; cache creation is input that missed.
 	used, uok := 0.0, false
 	if iok && cok && rok && input+creation+read <= maxSafe {
 		used = input + creation + read
 		uok = true
 		out["context_used"] = used
+		if used > 0 {
+			out["input_tokens"] = used
+			out["cached_tokens"] = read
+		}
 	}
 	if remaining, ok := percentage(c["remaining_percentage"]); ok {
 		out["context_remaining"] = remaining

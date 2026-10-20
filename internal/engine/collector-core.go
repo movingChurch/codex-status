@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/movingChurch/codex-status/internal/telemetry"
 )
 
 type session interface {
@@ -140,6 +142,7 @@ func (c *collector) tick(now time.Time) map[string]map[string]any {
 			snapshot["branch"] = branch
 		}
 		merge(snapshot, c.links.snapshot(stringValue(r.meta["cwd"]), branch, r.path, now))
+		snapshot["usage_url"] = telemetry.UsageURL(r.meta["runtime"])
 		elapsed := int64(now.Unix() - int64(number(r.meta["launched_at"])))
 		if elapsed < 0 {
 			elapsed = 0

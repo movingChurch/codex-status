@@ -25,3 +25,9 @@ func TestLinkBranchAndFile(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestUsageURLPerRuntime(t *testing.T) {
+	if UsageURL("codex") != linkUsageURL || UsageURL("claude") != "https://claude.ai/settings/usage" || UsageURL("antigravity") != nil {
+		t.Fatal("usage links")
+	}
+}

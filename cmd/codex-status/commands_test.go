@@ -11,7 +11,7 @@ import (
 func TestClaudeExplicitSettingsPreserved(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "original.json")
-	original := `{"permissions":{"defaultMode":"plan"},"statusLine":{"type":"command","command":"old"},"custom":true}`
+	original := `{"permissions":{"defaultMode":"plan"},"statusLine":{"type":"command","command":"old"},"custom":true,"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"user"}]}]}}`
 	if err := os.WriteFile(source, []byte(original), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +33,13 @@ func TestClaudeExplicitSettingsPreserved(t *testing.T) {
 	}
 	if result["custom"] != true || result["permissions"].(map[string]any)["defaultMode"] != "plan" || !strings.Contains(result["statusLine"].(map[string]any)["command"].(string), "__callback") {
 		t.Fatal(result)
+	}
+	if result["statusLine"].(map[string]any)["refreshInterval"] != float64(15) {
+		t.Fatal("refresh interval missing", result["statusLine"])
+	}
+	hooks := result["hooks"].(map[string]any)
+	if len(hooks["PreToolUse"].([]any)) != 2 || len(hooks["Stop"].([]any)) != 1 || !strings.Contains(string(b), "__hook") {
+		t.Fatal("explicit hooks not merged with activity hooks", hooks)
 	}
 	b, err = os.ReadFile(source)
 	if err != nil || string(b) != original {
@@ -92,5 +99,22 @@ func TestStartupQuotaUsesExactProvider(t *testing.T) {
 	}
 	if nativeStartupQuota("claude", nil) {
 		t.Fatal("wrong runtime helper enabled")
+	}
+}
+
+func TestClaudeInlineSettingsCarryHooks(t *testing.T) {
+	o := runnerOptions{Kind: "claude", Runtime: t.TempDir(), Run: "11111111-1111-4111-8111-111111111111"}
+	args, err := prepareNative(o, []string{"--model", "example"})
+	if err != nil || len(args) != 4 || args[2] != "--settings" {
+		t.Fatal(args, err)
+	}
+	var result map[string]any
+	if err = json.Unmarshal([]byte(args[3]), &result); err != nil {
+		t.Fatal(err)
+	}
+	hooks := result["hooks"].(map[string]any)
+	notification := hooks["Notification"].([]any)[0].(map[string]any)
+	if len(hooks) != 7 || notification["matcher"] != "permission_prompt|idle_prompt" || result["statusLine"].(map[string]any)["refreshInterval"] != float64(15) {
+		t.Fatal(result)
 	}
 }

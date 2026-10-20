@@ -77,9 +77,9 @@ Bars and percentages show **used** capacity. Codex context follows its validated
 
 Before the first prompt, Codex account quota can already appear. Until a native session identity exists, the HUD displays a ready state; Antigravity's empty startup IDs are pending. Billing estimates, aggregate agent progress, and indirect Codex resume selectors are outside the current scope.
 
-Claude receives a per-launch statusLine override; an explicit settings file is merged privately without modifying the original. Antigravity requires explicit setup because its documented callback is persistent. `codex-status uninstall antigravity` restores the prior selected setting while preserving unrelated changes. Unwrapped sessions dispatch the prior custom command when available. A native conversation change without an authoritative transition signal requires relaunching its HUD wrapper.
+Claude receives a per-launch statusLine override with a 15-second refresh and activity hooks; an explicit settings file is merged privately without modifying the original. Antigravity requires explicit setup because its documented callback is persistent. `codex-status uninstall antigravity` restores the prior selected setting while preserving unrelated changes. Unwrapped sessions dispatch the prior custom command when available. A native conversation change without an authoritative transition signal requires relaunching its HUD wrapper.
 
-Colored output includes terminal hyperlinks: directory opens the local folder, branch opens its Git remote, quota opens the Codex usage dashboard, and elapsed opens the exact session log. In Orca on macOS, use Cmd-click. The terminal controls the required modifier. Embedded Git credentials are stripped from links.
+Colored output includes terminal hyperlinks: directory opens the local folder, branch opens its Git remote, quota opens the runtime's usage page (Codex or Claude), and elapsed opens the exact session log. In Orca on macOS, use Cmd-click. The terminal controls the required modifier. Embedded Git credentials are stripped from links.
 
 ## Collection and privacy
 

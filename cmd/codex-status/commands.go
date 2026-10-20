@@ -101,11 +101,50 @@ func statusLine(kind string) (map[string]any, error) {
 		return nil, err
 	}
 	value := map[string]any{"type": "command", "command": shellCommand([]string{self, "__callback", kind}), "padding": 0}
+	if kind == "claude" {
+		// Statusline events go quiet while idle; the timer keeps the 180-second stale limit unmet.
+		value["refreshInterval"] = 15
+	}
 	if kind == "antigravity" {
 		value["enabled"] = true
 		value["stack_with_default"] = false
 	}
 	return value, nil
+}
+
+// activityHooks registers the launch-scoped Claude events that report HUD activity.
+func activityHooks() map[string]any {
+	self, err := os.Executable()
+	if err == nil {
+		self, err = filepath.EvalSymlinks(self)
+	}
+	if err != nil {
+		return map[string]any{}
+	}
+	entry := func(matcher string) []any {
+		return []any{map[string]any{"matcher": matcher, "hooks": []any{map[string]any{"type": "command", "command": shellCommand([]string{self, "__hook", "claude"}), "timeout": 1}}}}
+	}
+	out := map[string]any{}
+	for event := range adapters.HookEvents {
+		out[event] = entry("")
+	}
+	out["Notification"] = entry("permission_prompt|idle_prompt")
+	return out
+}
+
+// mergeHooks appends the launcher's entries to each event of an explicit hooks object.
+func mergeHooks(existing json.RawMessage, ours map[string]any) (json.RawMessage, error) {
+	events := map[string][]json.RawMessage{}
+	if len(existing) > 0 && string(existing) != "null" && json.Unmarshal(existing, &events) != nil {
+		return nil, errors.New("invalid explicit hooks object")
+	}
+	for event, entries := range ours {
+		for _, entry := range entries.([]any) {
+			raw, _ := json.Marshal(entry)
+			events[event] = append(events[event], raw)
+		}
+	}
+	return json.Marshal(events)
 }
 func settingsPath(kind string) (string, error) {
 	home, err := os.UserHomeDir()
@@ -176,6 +215,9 @@ func prepareNative(o runnerOptions, args []string) ([]string, error) {
 				}
 				replacement, _ := json.Marshal(value)
 				settings["statusLine"] = replacement
+				if settings["hooks"], err = mergeHooks(settings["hooks"], activityHooks()); err != nil {
+					return nil, err
+				}
 				merged, _ := json.Marshal(settings)
 				path := filepath.Join(o.Runtime, "launch-"+o.Run+".json")
 				file, openErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
@@ -196,7 +238,7 @@ func prepareNative(o runnerOptions, args []string) ([]string, error) {
 				return out, nil
 			}
 		}
-		raw, _ := json.Marshal(map[string]any{"statusLine": value})
+		raw, _ := json.Marshal(map[string]any{"statusLine": value, "hooks": activityHooks()})
 		return append(args, "--settings", string(raw)), nil
 	}
 	path, err := settingsPath(o.Kind)
@@ -225,6 +267,9 @@ func management(args []string) int {
 	}
 	if command == "__callback" {
 		return callback(kind)
+	}
+	if command == "__hook" {
+		return hook()
 	}
 	if kind != "codex" && kind != "claude" && kind != "antigravity" {
 		return 2
@@ -349,6 +394,26 @@ func callback(kind string) int {
 		_, _ = engine.RPC(root, map[string]any{"v": 1, "op": "publish", "run": id, "ticket": ticket["ticket"], "data": result.data}, deadline)
 	case <-timer.C:
 	}
+	return 0
+}
+
+// hook forwards one Claude hook event as activity and always exits 0 without output,
+// so a missing or slow manager never blocks or changes the native turn.
+func hook() int {
+	deadline := time.Now().Add(engine.CallbackBudget)
+	id, root := os.Getenv("CODEX_STATUS_RUN"), os.Getenv("CODEX_STATUS_RUNTIME_DIR")
+	if !uuidPattern.MatchString(id) || root == "" {
+		return 0
+	}
+	raw, err := io.ReadAll(io.LimitReader(os.Stdin, (1<<20)+1))
+	if err != nil {
+		return 0
+	}
+	data, err := adapters.NormalizeHook(raw)
+	if err != nil {
+		return 0
+	}
+	_, _ = engine.RPC(root, map[string]any{"v": 1, "op": "activity", "run": id, "session_id": data["session_id"], "activity": data["activity"]}, deadline)
 	return 0
 }
 

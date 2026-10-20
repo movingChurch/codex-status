@@ -120,3 +120,27 @@ func TestOldPendingCannotEraseNewObservation(t *testing.T) {
 		t.Fatal("old pending erased new observation")
 	}
 }
+
+func TestCallbackHookActivity(t *testing.T) {
+	s := newCallbackStore()
+	now := time.Now()
+	ticket := s.ticket("run", "auth1", now)["ticket"].(string)
+	if !s.update("run", "auth1", ticket, map[string]any{"session_id": "session-a"}, now) {
+		t.Fatal("payload rejected")
+	}
+	for _, activity := range []string{"working", "working", "complete"} {
+		if !s.activity("run", "auth1", "session-a", activity) {
+			t.Fatal("hook rejected", activity)
+		}
+	}
+	if got := s.snapshot("run", now)["activity"]; got != "complete" {
+		t.Fatal("stop after tool events not kept in order", got)
+	}
+	if s.activity("run", "auth1", "session-b", "working") || s.activity("run", "auth2", "session-a", "working") || s.activity("other", "auth1", "session-a", "working") {
+		t.Fatal("foreign hook accepted")
+	}
+	ticket = s.ticket("run", "auth1", now)["ticket"].(string)
+	if !s.update("run", "auth1", ticket, map[string]any{"session_id": "session-a", "context_used": 1}, now) || s.snapshot("run", now)["activity"] != "complete" {
+		t.Fatal("statusline payload erased hook activity")
+	}
+}
