@@ -298,7 +298,8 @@ func accountMenu(kind, x, client, pane, socket string) int {
 	}
 	self, _ = filepath.EvalSymlinks(self)
 	restarts := len(openWindows(kind).relaunch)
-	args := []string{"display-menu", "-c", client, "-t", pane, "-x", "P", "-y", "P", "-T", menuText(kind + " accounts")}
+	// "--" ends the flags, since a disabled item starts with "-".
+	args := []string{"-S", socket, "display-menu", "-c", client, "-t", pane, "-x", "P", "-y", "P", "-T", menuText(kind + " accounts"), "--"}
 	for _, e := range entries {
 		if e.Runtime != kind {
 			continue
@@ -311,7 +312,8 @@ func accountMenu(kind, x, client, pane, socket string) int {
 		run := shellCommand([]string{self, "__account-switch", kind, e.ID})
 		args = append(args, menuText("  "+e.Label()), "", "confirm-before -p "+tmuxQuote(prompt)+" "+tmuxQuote("run-shell -b "+tmuxQuote(run)))
 	}
-	if _, err = tmuxCall(socket, args...); err != nil {
+	// display-menu returns only when the menu closes, so it is left running.
+	if err = exec.Command("tmux", args...).Start(); err != nil {
 		return 1
 	}
 	return 0
