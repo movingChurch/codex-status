@@ -28,11 +28,28 @@ Ten idle sessions save 108.14 MiB (29.8%) and 19 persistent processes in this sa
 
 CPU seconds over five seconds (old/candidate): idle 1: .01/.01, 5: .01/.03, 10: .05/.02; active 1: .01/.01, 5: .09/.06, 10: .11/.11. No CPU improvement is claimed. Short samples are noisy; process RSS double-counts shared pages and excludes exited helpers. One sample per matrix cell is not a statistical performance guarantee. Production LLM activity was not benchmarked.
 
-Read/redraw behavior is checked through bounded incremental-reader and hidden-view fixtures; syscall counts and redraw frequency were not instrumented in the workload matrix. Live compaction, billing accuracy and all-runtime long-running failure recovery remain unaccepted.
+Read and redraw counts are in [the 2026-10-20 section](#2026-10-20-read-redraw-and-installer-checks). Live compaction and billing accuracy remain unaccepted; manager loss, native exit and single-session failure were accepted live, see [compatibility](compatibility.md).
+
+## 2026-10-20 read, redraw and installer checks
+
+Isolated runtime-status build (own runtime directory), macOS arm64, 140-column views, synthetic Codex fixture sharing one account home. Each cell is one 60-second sample after a 10-second settle; the manager status counters give reads, and one counting view per session gives frames. Active fixtures append one token-count event per second. Idle fixtures append nothing.
+
+| Workload | Sessions | Manager ticks | Rollout reads | Bytes read | Binding checks | Frames per view per minute |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Idle | 1 | 60 | 60 | 0 | 11 | 14.5 |
+| Idle | 5 | 60 | 300 | 0 | 58 | 13.7 |
+| Idle | 10 | 60 | 600 | 0 | 105 | 13.9 |
+| Active | 1 | 60 | 60 | 13,548 | 11 | 61.0 |
+| Active | 5 | 60 | 300 | 67,766 | 55 | 61.9 |
+| Active | 10 | 60 | 600 | 135,528 | 110 | 60.3 |
+
+One manager ticks once per second for every session count. Each visible session costs one incremental read per tick, and bytes read equal only the appended events: about 13.5 KB per active session per minute, and nothing while idle. tmux visibility queries stayed at 10–11 per minute per socket. Frames are sent only when a view's content changes: about one per event while active and about 14 per minute while idle, from the elapsed-time cell. No full-file rereads (`head_reads` 0) occurred. Hidden views are not read.
+
+Installer, isolated HOME with a fixture `agy` and existing `~/.zshrc` and Antigravity settings: install of an older build, update to the candidate, a repeated install (no `~/.zshrc` change, one block), and uninstall all passed. Uninstall restored `~/.zshrc` to its original line and removed only `statusLine` from the Antigravity settings, keeping unrelated keys. The owner's machine migrated the codex-status install: old blocks and executables backed up and removed, a busy old executable kept and reported.
 
 ## Distribution
 
-`scripts/build-release.sh` produces `dist/codex-status_0.3.0-alpha.1_darwin_{arm64,amd64}.tar.gz` and `dist/checksums_0.3.0-alpha.1.txt`. Archives include the executable, installer, README, license/notice material, relevant Darwin source and adapter/compatibility records. arm64 is executed locally; amd64 is cross-built.
+`scripts/build-release.sh` produces `dist/runtime-status_0.3.0-alpha.1_darwin_{arm64,amd64}.tar.gz` and `dist/checksums_0.3.0-alpha.1.txt`. Archives include the executable, installer, README, license/notice material, relevant Darwin source and adapter/compatibility records. arm64 is executed locally; amd64 is cross-built.
 
 Finish existing v0.2 HUD sessions normally before launching v0.3. The incompatible old manager is preserved rather than duplicated. Existing installed executable, running sessions and production account metadata were not replaced during preparation.
 
