@@ -365,7 +365,7 @@ func accountMenu(kind, x, client, pane, socket string) int {
 	self, _ = filepath.EvalSymlinks(self)
 	restarts := len(openWindows(kind).relaunch)
 	// "--" ends the flags, since a disabled item starts with "-".
-	args := []string{"-S", socket, "display-menu", "-M", "-c", client, "-t", pane, "-x", "P", "-y", "P", "-T", menuText(kind + " accounts"), "--"}
+	args := []string{"-S", socket, "display-menu", "-M", "-O", "-c", client, "-t", pane, "-x", "P", "-y", "P", "-T", menuText(kind + " accounts"), "--"}
 	for _, e := range entries {
 		if e.Runtime != kind {
 			continue
@@ -388,7 +388,7 @@ func accountMenu(kind, x, client, pane, socket string) int {
 // confirmMenu is the second menu an account item opens, Switch or Cancel,
 // so the mouse finishes the switch.
 func confirmMenu(prompt, run string) string {
-	return "display-menu -M -x P -y P -T " + tmuxQuote(prompt) + " -- " + tmuxQuote("Switch") + ` "" ` + tmuxQuote("run-shell -b "+tmuxQuote(run)) + " " + tmuxQuote("Cancel") + ` "" ""`
+	return "display-menu -M -O -x P -y P -T " + tmuxQuote(prompt) + " -- " + tmuxQuote("Switch") + ` "" ` + tmuxQuote("run-shell -b "+tmuxQuote(run)) + " " + tmuxQuote("Cancel") + ` "" ""`
 }
 
 // menuText keeps a label literal in a tmux format.
