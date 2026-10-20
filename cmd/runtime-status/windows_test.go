@@ -24,7 +24,7 @@ func TestMenuTextStaysLiteral(t *testing.T) {
 	}
 }
 
-func TestAccountItemOpensSwitchMenu(t *testing.T) {
+func TestAccountItemRunsSwitch(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux unavailable")
 	}
@@ -33,13 +33,13 @@ func TestAccountItemOpensSwitchMenu(t *testing.T) {
 	if out, err := exec.Command("tmux", "-S", socket, "-f", "/dev/null", "new-session", "-d", "sleep 30").CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
-	command := confirmMenu("Switch codex to b@example.com? 1 window(s) restart", "'/bin/echo' 'x'")
+	command := switchCommand("'/bin/echo' 'x'")
 	// Binding the command makes tmux parse it exactly as a menu item does.
 	if out, err := exec.Command("tmux", "-S", socket, "bind-key", "-T", "root", "F12", command).CombinedOutput(); err != nil {
 		t.Fatalf("menu command does not parse: %v %s", err, out)
 	}
 	listed, _ := exec.Command("tmux", "-S", socket, "list-keys", "-T", "root").Output()
-	if !strings.Contains(string(listed), "Switch") || !strings.Contains(string(listed), "Cancel") || !strings.Contains(string(listed), "run-shell") {
-		t.Fatalf("confirm menu lacks Switch, Cancel or its command: %s", listed)
+	if !strings.Contains(string(listed), "run-shell") || strings.Contains(string(listed), "display-menu") {
+		t.Fatalf("account item does not run the switch directly: %s", listed)
 	}
 }

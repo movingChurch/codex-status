@@ -373,7 +373,7 @@ func accountMenu(kind, x, client, pane, socket string) int {
 	self, _ = filepath.EvalSymlinks(self)
 	restarts := len(openWindows(kind).relaunch)
 	// "--" ends the flags, since a disabled item starts with "-".
-	args := []string{"-S", socket, "display-menu", "-M", "-O", "-c", client, "-t", pane, "-x", "P", "-y", "P", "-T", menuText(kind + " accounts"), "--"}
+	args := []string{"-S", socket, "display-menu", "-M", "-O", "-c", client, "-t", pane, "-x", "P", "-y", "P", "-T", menuText(fmt.Sprintf("%s accounts, %d window(s) restart", kind, restarts)), "--"}
 	for _, e := range entries {
 		if e.Runtime != kind {
 			continue
@@ -382,9 +382,8 @@ func accountMenu(kind, x, client, pane, socket string) int {
 			args = append(args, "-"+menuText("* "+e.Label()), "", "")
 			continue
 		}
-		prompt := menuText(fmt.Sprintf("Switch %s to %s? %d window(s) restart", kind, e.Label(), restarts))
 		run := shellCommand([]string{self, "__account-switch", kind, e.ID})
-		args = append(args, menuText("  "+e.Label()), "", confirmMenu(prompt, run))
+		args = append(args, menuText("  "+e.Label()), "", switchCommand(run))
 	}
 	// display-menu returns only when the menu closes, so it is left running.
 	if err = exec.Command("tmux", args...).Start(); err != nil {
@@ -393,10 +392,9 @@ func accountMenu(kind, x, client, pane, socket string) int {
 	return 0
 }
 
-// confirmMenu is the second menu an account item opens, Switch or Cancel,
-// so the mouse finishes the switch.
-func confirmMenu(prompt, run string) string {
-	return "display-menu -M -O -x P -y P -T " + tmuxQuote(prompt) + " -- " + tmuxQuote("Switch") + ` "" ` + tmuxQuote("run-shell -b "+tmuxQuote(run)) + " " + tmuxQuote("Cancel") + ` "" ""`
+// switchCommand is what an account item runs: the switch itself, at once.
+func switchCommand(run string) string {
+	return "run-shell -b " + tmuxQuote(run)
 }
 
 // menuText keeps a label literal in a tmux format.
