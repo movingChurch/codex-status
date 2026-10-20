@@ -330,9 +330,11 @@ func accountMenu(kind, x, client, pane, socket string) int {
 			args = append(args, "-"+menuText("* "+e.Label()), "", "")
 			continue
 		}
-		prompt := menuText(fmt.Sprintf("Switch %s to %s? %d window(s) restart (y/n)", kind, e.Label(), restarts))
+		prompt := menuText(fmt.Sprintf("Switch %s to %s? %d window(s) restart", kind, e.Label(), restarts))
 		run := shellCommand([]string{self, "__account-switch", kind, e.ID})
-		args = append(args, menuText("  "+e.Label()), "", "confirm-before -p "+tmuxQuote(prompt)+" "+tmuxQuote("run-shell -b "+tmuxQuote(run)))
+		// The confirmation is a second menu, so the mouse finishes the switch.
+		confirm := "display-menu -x P -y P -T " + tmuxQuote(prompt) + " -- " + tmuxQuote("Switch") + ` "" ` + tmuxQuote("run-shell -b "+tmuxQuote(run)) + " " + tmuxQuote("Cancel") + ` "" ""`
+		args = append(args, menuText("  "+e.Label()), "", confirm)
 	}
 	// display-menu returns only when the menu closes, so it is left running.
 	if err = exec.Command("tmux", args...).Start(); err != nil {
