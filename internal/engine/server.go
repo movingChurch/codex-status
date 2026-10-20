@@ -231,7 +231,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					if r.data["context_remaining"] != nil {
 						contexts++
 					}
-					if r.data["weekly"] != nil || r.data["five_hour"] != nil || r.data["quota_pools"] != nil {
+					if r.data["weekly"] != nil || r.data["five_hour"] != nil || r.data["monthly"] != nil || r.data["quota_pools"] != nil {
 						quotas++
 					}
 				}

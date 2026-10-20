@@ -87,7 +87,7 @@ Rotating accounts to get around usage limits can break provider terms; runtime-s
 | Row | Information |
 | --- | --- |
 | Session | Selected account, model, reasoning effort, working directory, Git branch |
-| Capacity | Context tokens and usage, 5H/7D usage and reset countdowns |
+| Capacity | Context tokens and usage, 5H/7D usage and reset countdowns, and 30D for accounts whose plan has only a 30-day window |
 | Activity | Observed task state, elapsed time, cache tokens and hit rate |
 
 The account is the alias, else the email, of the account selected in `~/.local/state/runtime-status/accounts.json`, shown only for windows on `~/.codex` or `~/.claude`; the HUD never reads credentials, and a native `/login` outside runtime-status is not reflected until the next `account` command. Bars and percentages show **used** capacity. Codex context follows its validated reserved-token calculation; other adapters prefer provider percentages. Cache hit rate is cached input divided by input tokens. Only observed quota windows or pools appear. Loading, unavailable data, known binding errors, and measured zero remain distinct.

@@ -338,13 +338,14 @@ func (r *SessionReader) quota(limits map[string]any, stamp float64) {
 	}
 	r.state["five_hour"] = nil
 	r.state["weekly"] = nil
+	r.state["monthly"] = nil
 	for _, slot := range []string{"primary", "secondary"} {
 		w := eventMap(limits[slot])
 		minutes, ok := eventInt(w["window_minutes"])
 		if !ok {
 			continue
 		}
-		field := map[int64]string{300: "five_hour", 10080: "weekly"}[minutes]
+		field := map[int64]string{300: "five_hour", 10080: "weekly", 43200: "monthly"}[minutes]
 		if field == "" {
 			continue
 		}
@@ -364,7 +365,7 @@ func (r *SessionReader) quota(limits map[string]any, stamp float64) {
 	}
 	r.state["quota_scope"] = "codex"
 	r.state["quota_updated_at"] = nil
-	if r.state["five_hour"] != nil || r.state["weekly"] != nil {
+	if r.state["five_hour"] != nil || r.state["weekly"] != nil || r.state["monthly"] != nil {
 		r.state["quota_updated_at"] = stamp
 	}
 }

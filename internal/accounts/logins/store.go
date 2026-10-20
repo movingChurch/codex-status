@@ -38,6 +38,7 @@ func (a Account) Label() string {
 type Usage struct {
 	FiveHour any    `json:"five_hour,omitempty"`
 	Weekly   any    `json:"weekly,omitempty"`
+	Monthly  any    `json:"monthly,omitempty"`
 	At       string `json:"at"`
 }
 

@@ -33,16 +33,16 @@ func (b *accountBook) annotate(id string, meta, snapshot map[string]any, now tim
 		return
 	}
 	snapshot["account"] = label
-	if snapshot["state"] == "account-changed" || snapshot["five_hour"] == nil && snapshot["weekly"] == nil {
+	if snapshot["state"] == "account-changed" || snapshot["five_hour"] == nil && snapshot["weekly"] == nil && snapshot["monthly"] == nil {
 		return
 	}
 	// A reading is kept when it changes, and at least every five minutes.
-	reading, _ := json.Marshal([]any{snapshot["five_hour"], snapshot["weekly"]})
+	reading, _ := json.Marshal([]any{snapshot["five_hour"], snapshot["weekly"], snapshot["monthly"]})
 	if string(reading) == b.last[id] && now.Sub(b.at[id]) < 5*time.Minute {
 		return
 	}
 	b.last[id], b.at[id] = string(reading), now
-	usage := logins.Usage{FiveHour: snapshot["five_hour"], Weekly: snapshot["weekly"], At: now.UTC().Format(time.RFC3339)}
+	usage := logins.Usage{FiveHour: snapshot["five_hour"], Weekly: snapshot["weekly"], Monthly: snapshot["monthly"], At: now.UTC().Format(time.RFC3339)}
 	go b.record(b.home, kind, usage)
 }
 

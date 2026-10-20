@@ -277,7 +277,7 @@ func renderCapacity(s map[string]any, width int, now float64) []renderSegment {
 		}
 		parts = []renderSegment{renderPart(label+" ", "label"), renderPart(value, "mint")}
 		observed := false
-		for _, q := range [][3]string{{"five_hour", "5H", "blue"}, {"weekly", "7D", "yellow"}} {
+		for _, q := range [][3]string{{"five_hour", "5H", "blue"}, {"weekly", "7D", "yellow"}, {"monthly", "30D", "mint"}} {
 			quota, _ := s[q[0]].(map[string]any)
 			if quota == nil {
 				continue

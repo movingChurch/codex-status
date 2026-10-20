@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -110,5 +111,17 @@ func TestAccountFetchPreservesResetNumberType(t *testing.T) {
 				t.Fatal(got)
 			}
 		})
+	}
+}
+
+func TestAccountNormalizeMonthlyWindow(t *testing.T) {
+	out := accountNormalize(map[string]any{"rateLimits": map[string]any{"primary": map[string]any{"usedPercent": 12.0, "windowDurationMins": 43200.0}}})
+	monthly, _ := out["monthly"].(map[string]any)
+	if monthly == nil || monthly["remaining"] != 88.0 || out["quota_updated_at"] == nil {
+		t.Fatalf("a 30-day window must become monthly quota: %v", out)
+	}
+	line := Render(map[string]any{"monthly": monthly}, 120, false)[1]
+	if !strings.Contains(line, "30D") || !strings.Contains(line, "12.0%") {
+		t.Fatalf("capacity row %q lacks the 30D window", line)
 	}
 }

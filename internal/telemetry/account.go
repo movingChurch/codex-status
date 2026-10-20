@@ -53,7 +53,7 @@ func accountNormalize(result map[string]any) map[string]any {
 	if !ok {
 		return map[string]any{}
 	}
-	out := map[string]any{"quota_scope": "codex", "quota_source": "account", "five_hour": nil, "weekly": nil}
+	out := map[string]any{"quota_scope": "codex", "quota_source": "account", "five_hour": nil, "weekly": nil, "monthly": nil}
 	for _, slot := range []string{"primary", "secondary"} {
 		value, _ := limits[slot].(map[string]any)
 		duration, _ := accountNumber(value["windowDurationMins"])
@@ -63,6 +63,8 @@ func accountNormalize(result map[string]any) map[string]any {
 			field = "five_hour"
 		case 10080:
 			field = "weekly"
+		case 43200:
+			field = "monthly"
 		}
 		if field == "" {
 			continue
@@ -77,7 +79,7 @@ func accountNormalize(result map[string]any) map[string]any {
 			out[field] = map[string]any{"remaining": 100 - used, "resets_at": reset}
 		}
 	}
-	if out["five_hour"] != nil || out["weekly"] != nil {
+	if out["five_hour"] != nil || out["weekly"] != nil || out["monthly"] != nil {
 		out["quota_updated_at"] = float64(time.Now().UnixNano()) / 1e9
 	}
 	return out

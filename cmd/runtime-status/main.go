@@ -311,6 +311,7 @@ func launchRuntime(kind, resume string, args []string) int {
 	}
 	return 0
 }
+
 // sealExecutable samples a launched process's executable across launcher
 // re-execs until it holds for two samples; a shell running a launcher script
 // is never final, since the script may resolve paths for a while before it

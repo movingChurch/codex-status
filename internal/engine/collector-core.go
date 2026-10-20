@@ -170,7 +170,7 @@ func (c *collector) tick(now time.Time) map[string]map[string]any {
 	return snapshots
 }
 func pending(meta map[string]any) map[string]any {
-	return map[string]any{"v": 1, "runtime": meta["runtime"], "context_status": "pending", "identity_status": "unresolved", "state": "pending", "model": nil, "effort": nil, "cwd": meta["cwd"], "branch": nil, "context_remaining": nil, "five_hour": nil, "weekly": nil, "activity": "waiting", "tool": nil, "elapsed": 0, "updated_at": nil, "quota_updated_at": nil, "session_id": nil, "quota_scope": nil}
+	return map[string]any{"v": 1, "runtime": meta["runtime"], "context_status": "pending", "identity_status": "unresolved", "state": "pending", "model": nil, "effort": nil, "cwd": meta["cwd"], "branch": nil, "context_remaining": nil, "five_hour": nil, "weekly": nil, "monthly": nil, "activity": "waiting", "tool": nil, "elapsed": 0, "updated_at": nil, "quota_updated_at": nil, "session_id": nil, "quota_scope": nil}
 }
 func stringValue(value any) string { v, _ := value.(string); return v }
 func number(value any) float64 {
