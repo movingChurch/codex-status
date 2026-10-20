@@ -14,16 +14,12 @@ const accountUsage = `Usage: runtime-status account list [--json]
        runtime-status account use codex|claude EMAIL|ALIAS
        runtime-status account rename codex|claude EMAIL|ALIAS NEW-ALIAS
        runtime-status account remove codex|claude EMAIL|ALIAS
-       runtime-status account import-orca [--replace]
 
 ` + termsNotice
 
 const termsNotice = `Logins are copied into the macOS Keychain on this machine only. Rotating
 accounts to get around usage limits can break provider terms and lead to
 suspension; keep each stored login to yourself.`
-
-const orcaNotice = `Do not start Orca again before removing it: its token refresh signs the
-imported copies out.`
 
 // accountCommand runs the account subcommands; errors print one line.
 func accountCommand(args []string) int {
@@ -64,9 +60,6 @@ func runAccount(m *logins.Manager, args []string) error {
 			}
 			fmt.Printf("%s %-7s %s%s\n", mark, e.Runtime, e.Label(), aliasNote(e.Account))
 		}
-		if running, _ := m.OrcaRunning(); running && m.ImportedFromOrca() {
-			fmt.Fprintln(os.Stderr, "Warning: Orca is running. "+orcaNotice)
-		}
 		return nil
 	case args[0] == "add" && (len(args) == 2 || len(args) == 3 && args[2] == "--current"):
 		if len(args) == 2 {
@@ -75,6 +68,7 @@ func runAccount(m *logins.Manager, args []string) error {
 		a, err := m.Add(args[1], len(args) == 3)
 		if err == nil {
 			fmt.Printf("Stored %s account %s\n", a.Runtime, a.Label())
+			fmt.Fprintln(os.Stderr, termsNotice)
 		}
 		return err
 	case args[0] == "use" && len(args) == 3:
@@ -86,20 +80,6 @@ func runAccount(m *logins.Manager, args []string) error {
 			}
 		}
 		return err
-	case args[0] == "import-orca" && (len(args) == 1 || len(args) == 2 && args[1] == "--replace"):
-		imported, err := m.ImportOrca(len(args) == 2)
-		if err != nil {
-			return err
-		}
-		for _, a := range imported {
-			verb := "Imported"
-			if a.Skipped {
-				verb = "Skipped (already stored)"
-			}
-			fmt.Printf("%s %s account %s\n", verb, a.Runtime, a.Label())
-		}
-		fmt.Fprintln(os.Stderr, termsNotice+"\n"+orcaNotice)
-		return nil
 	case args[0] == "rename" && len(args) == 4:
 		return m.Rename(args[1], args[2], args[3])
 	case args[0] == "remove" && len(args) == 3:

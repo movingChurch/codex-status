@@ -119,6 +119,7 @@ func (m *Manager) writeJournal(j journal) error {
 
 // recover finishes or undoes a switch a crash interrupted.
 func (m *Manager) recover() error {
+	m.sweep()
 	raw, err := os.ReadFile(m.journalPath())
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

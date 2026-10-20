@@ -83,7 +83,7 @@ func (f *fixture) liveCodex(t *testing.T, raw []byte) {
 }
 func (f *fixture) readCodex(t *testing.T) Login {
 	t.Helper()
-	login, err := codex{home: f.m.Home, env: f.m.Env}.live()
+	login, err := codex{home: f.m.Home}.live()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestRefusalsWriteNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.addCodex(t, "acct-b", "b@example.com")
-	for _, p := range []Process{{PID: 10, Args: "/Applications/Orca.app/Contents/MacOS/Orca"}, {PID: 11, Args: "/opt/homebrew/bin/codex resume"}, {PID: 12, Args: "/Applications/Codex.app/Contents/MacOS/Codex"}} {
+	for _, p := range []Process{{PID: 11, Args: "/opt/homebrew/bin/codex resume", Env: map[string]string{}}, {PID: 12, Args: "/Applications/Codex.app/Contents/MacOS/Codex", Env: map[string]string{}}} {
 		f.procs = []Process{p}
 		if _, err := f.m.Use("codex", "b@example.com", nil); err == nil || !strings.Contains(err.Error(), "pid") {
 			t.Fatalf("switch allowed beside %s: %v", p.Args, err)
@@ -219,8 +219,78 @@ func TestRefusalsWriteNothing(t *testing.T) {
 		}
 		return ""
 	}
-	if _, err := f.m.Use("codex", "b@example.com", nil); err == nil || !strings.Contains(err.Error(), "CODEX_HOME") {
-		t.Fatal("foreign CODEX_HOME accepted", err)
+	if _, err := f.m.Add("codex", true); err == nil || !strings.Contains(err.Error(), "CODEX_HOME") {
+		t.Fatal("--current accepted under a foreign CODEX_HOME", err)
+	}
+	f.secrets.denyAt = ""
+	if _, err := f.m.Use("codex", "b@example.com", nil); err != nil {
+		t.Fatal("caller's CODEX_HOME refused a switch of ~/.codex", err)
+	}
+}
+
+func TestBusyByProcessHome(t *testing.T) {
+	f := newFixture(t)
+	orca := filepath.Join(f.m.Home, "Library", "Application Support", "orca")
+	free := []Process{
+		{PID: 10, Args: "/Applications/Orca.app/Contents/MacOS/Orca"},
+		{PID: 11, Args: "/opt/homebrew/bin/codex resume", Env: map[string]string{"CODEX_HOME": filepath.Join(orca, "codex-accounts", "u1", "home")}},
+		{PID: 12, Args: "/Users/owner/.local/share/claude/versions/2.1.0", Env: map[string]string{"CLAUDE_CONFIG_DIR": filepath.Join(orca, "claude-profiles", "p1", "home")}},
+		{PID: 13, Args: "/bin/zsh", Env: nil},
+	}
+	blocking := map[string][]Process{
+		"codex": {
+			{PID: 20, Args: "/opt/homebrew/bin/codex", Env: map[string]string{}},
+			{PID: 21, Args: "/opt/homebrew/bin/codex", Env: map[string]string{"CODEX_HOME": filepath.Join(f.m.Home, ".codex") + "/"}},
+			{PID: 22, Args: "/opt/homebrew/bin/codex", Env: map[string]string{"CODEX_HOME": filepath.Join(orca, "codex-runtime-home", "home")}},
+			{PID: 23, Args: "/opt/homebrew/bin/codex", Env: nil},
+		},
+		"claude": {
+			{PID: 30, Args: "/opt/homebrew/bin/claude", Env: map[string]string{"HOME": f.m.Home}},
+			{PID: 31, Args: "/Users/owner/.local/share/claude/versions/2.1.0", Env: nil},
+		},
+	}
+	for name, procs := range blocking {
+		f.procs = free
+		if busy, err := f.m.Busy(name); err != nil || len(busy) != 0 {
+			t.Fatalf("%s blocked by Orca or its own homes: %v %v", name, busy, err)
+		}
+		for _, p := range procs {
+			f.procs = append(append([]Process{}, free...), p)
+			if busy, _ := f.m.Busy(name); len(busy) != 1 {
+				t.Fatalf("%s not blocked by %+v: %v", name, p, busy)
+			}
+		}
+	}
+}
+
+func TestParseEnvKeepsSpaces(t *testing.T) {
+	env := parseEnv(" HOME=/Users/o CODEX_HOME=/Users/o/Library/Application Support/orca/x/home TERM=xterm")
+	if env["CODEX_HOME"] != "/Users/o/Library/Application Support/orca/x/home" || env["HOME"] != "/Users/o" || env["TERM"] != "xterm" {
+		t.Fatalf("%q", env)
+	}
+	if parseEnv("  ") != nil {
+		t.Fatal("empty environment read as readable")
+	}
+}
+
+func TestSweepRemovesInterruptedSignIn(t *testing.T) {
+	f := newFixture(t)
+	t.Setenv("TMPDIR", t.TempDir())
+	dir, err := os.MkdirTemp("", signInPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.secrets.Set(scopedService(dir), f.m.User, []byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.m.List(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("temporary home left after an interrupted sign-in")
+	}
+	if _, err = f.secrets.Get(scopedService(dir), f.m.User); err == nil {
+		t.Fatal("scoped Keychain item left after an interrupted sign-in")
 	}
 }
 

@@ -32,7 +32,6 @@ var errNoLogin = errors.New("no login in use")
 
 type codex struct {
 	home string
-	env  func(string) string
 }
 
 func (c codex) dir() string { return filepath.Join(c.home, ".codex") }
@@ -40,9 +39,6 @@ func (c codex) dir() string { return filepath.Join(c.home, ".codex") }
 var storeSetting = regexp.MustCompile(`(?m)^\s*cli_auth_credentials_store\s*=\s*"([a-z]+)"`)
 
 func (c codex) check() error {
-	if v := c.env("CODEX_HOME"); v != "" && filepath.Clean(v) != c.dir() {
-		return fmt.Errorf("CODEX_HOME is set to %s; switching covers only %s", v, c.dir())
-	}
 	if raw, err := os.ReadFile(filepath.Join(c.dir(), "config.toml")); err == nil {
 		if m := storeSetting.FindSubmatch(raw); m != nil && string(m[1]) != "file" {
 			return fmt.Errorf("cli_auth_credentials_store = %q; switching needs the file store", m[1])
@@ -95,7 +91,6 @@ func (codex) parse(data []byte) (Login, error) {
 type claude struct {
 	home    string
 	user    string
-	env     func(string) string
 	secrets Secrets
 }
 
@@ -110,12 +105,8 @@ func (c claude) profile() string {
 	return filepath.Join(c.home, ".claude.json")
 }
 
-func (c claude) check() error {
-	if v := c.env("CLAUDE_CONFIG_DIR"); v != "" && filepath.Clean(v) != c.dir() {
-		return fmt.Errorf("CLAUDE_CONFIG_DIR is set to %s; switching covers only %s", v, c.dir())
-	}
-	return nil
-}
+// check has nothing to refuse: the default Keychain item is the only store.
+func (claude) check() error { return nil }
 
 // fallback is the file Claude Code reads when the Keychain has no login.
 func (c claude) fallback() string { return filepath.Join(c.dir(), ".credentials.json") }

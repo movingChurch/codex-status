@@ -46,8 +46,6 @@ type metadata struct {
 	Accounts []Account         `json:"accounts"`
 	Current  map[string]string `json:"current"`
 	Usage    map[string]Usage  `json:"usage,omitempty"`
-	// OrcaImported marks logins copied from Orca, so listings warn while it runs.
-	OrcaImported bool `json:"orca_imported,omitempty"`
 	// Noticed marks the terms notice as shown on a first switch.
 	Noticed bool `json:"noticed,omitempty"`
 }
