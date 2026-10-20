@@ -302,7 +302,7 @@ func accountMenu(kind, x, client, pane, socket string) int {
 	}
 	label := logins.Selected(home, kind)
 	column := 0
-	if _, err = fmt.Sscan(x, &column); err != nil || label == "" || column >= telemetry.TextWidth(label) {
+	if _, err = fmt.Sscan(x, &column); err != nil || label == "" || column >= telemetry.TextWidth(label+telemetry.AccountMark) {
 		return 0
 	}
 	m, err := logins.NewManager()

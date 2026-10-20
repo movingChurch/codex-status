@@ -76,7 +76,7 @@ runtime-status account remove codex|claude EMAIL|ALIAS
 ```
 
 - **Add:** `add` opens the native sign-in in a temporary home, so the login in use stays unchanged; `--current` stores the login in use. Each login is copied into a `runtime-status accounts` item of the macOS Keychain on this machine only.
-- **Switch:** `use`, or a click on the account name at the start of the HUD's first row, which opens a menu of that runtime's accounts. `~/.codex` and `~/.claude` keep one login each, so settings, skills and history stay shared and only the login changes.
+- **Switch:** `use`, or a click on the account name at the start of the HUD's first row, underlined and marked `▾` like a link, which opens a menu of that runtime's accounts. `~/.codex` and `~/.claude` keep one login each, so settings, skills and history stay shared and only the login changes.
 - **Open windows:** runtime-status windows on `~/.codex` or `~/.claude` restart on the new account in their pane and directory with their launch arguments; a conversation continues only when those arguments resume it. `use` names them and asks once; `--yes` skips the question. Windows on another home, such as Orca's account homes, are left alone and named as skipped. A process of that runtime outside runtime-status that uses the same home refuses the switch.
 - **Usage:** `account list --json` reports the last 5H/7D reading the HUD observed for each account, as remaining percent.
 

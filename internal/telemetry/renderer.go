@@ -12,7 +12,7 @@ import (
 	"unicode"
 )
 
-var renderColors = map[string]string{"model": "\x1b[0;1;38;2;58;207;137m", "mint": "\x1b[0;38;2;0;181;113m", "blue": "\x1b[0;38;2;72;166;255m", "yellow": "\x1b[0;38;2;229;194;38m", "dim": "\x1b[0;38;2;161;165;167m", "label": "\x1b[0;38;2;62;67;69m"}
+var renderColors = map[string]string{"model": "\x1b[0;1;38;2;58;207;137m", "mint": "\x1b[0;38;2;0;181;113m", "blue": "\x1b[0;38;2;72;166;255m", "link": "\x1b[0;4;38;2;72;166;255m", "yellow": "\x1b[0;38;2;229;194;38m", "dim": "\x1b[0;38;2;161;165;167m", "label": "\x1b[0;38;2;62;67;69m"}
 var renderOSC = regexp.MustCompile("\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\|$)")
 var renderCSI = regexp.MustCompile("\x1b\\[[0-?]*[ -/]*[@-~]")
 var renderUUID = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
@@ -71,6 +71,9 @@ func renderTextWidth(s string) int {
 	}
 	return n
 }
+
+// AccountMark follows the account label to show that it opens a menu.
+const AccountMark = " ▾"
 
 // TextWidth is the number of terminal cells s takes in the HUD.
 func TextWidth(s string) int { return renderTextWidth(renderClean(s)) }
@@ -423,9 +426,10 @@ func Render(snapshot map[string]any, width int, color bool) []string {
 		}
 	}
 	first := []renderSegment{renderPart(model, "model")}
-	// The selected account leads the row, where a click opens its menu.
+	// The selected account leads the row, underlined with a menu mark like a
+	// link, since a click on it opens the account menu.
 	if account := renderClean(snapshot["account"]); account != "" && account != "—" {
-		first = append([]renderSegment{renderPart(account, "blue"), renderPart(" │ ", "label")}, first...)
+		first = append([]renderSegment{renderPart(account+AccountMark, "link"), renderPart(" │ ", "label")}, first...)
 	}
 	effort := renderClean(snapshot["effort"])
 	if effort != "" && effort != "—" {

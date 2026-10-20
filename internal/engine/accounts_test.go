@@ -43,7 +43,7 @@ func TestHUDFirstRowShowsSelectedAccount(t *testing.T) {
 		return telemetry.Render(snapshot, 120, false)[0]
 	}
 	onLive := map[string]any{"runtime": "codex", "home": live}
-	for _, c := range []struct{ alias, want string }{{"", "a@example.com │ gpt-5"}, {"work", "work │ gpt-5"}} {
+	for _, c := range []struct{ alias, want string }{{"", "a@example.com ▾ │ gpt-5"}, {"work", "work ▾ │ gpt-5"}} {
 		writeAccounts(t, home, c.alias)
 		if row := firstRow(onLive); !strings.HasPrefix(row, c.want) {
 			t.Errorf("first row %q, want it to start with %q", row, c.want)
