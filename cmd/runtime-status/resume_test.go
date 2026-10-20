@@ -53,3 +53,16 @@ func TestConversationStoredByRuntime(t *testing.T) {
 		t.Fatal("Codex rollout lookup is wrong")
 	}
 }
+
+func TestLaunchedConversationFallback(t *testing.T) {
+	id := "11111111-2222-4333-8444-555555555555"
+	if got := launchedConversation(map[string]any{"expected_session": id}); got != id {
+		t.Fatalf("codex resume target lost: %q", got)
+	}
+	if got := launchedConversation(map[string]any{"args": []any{"--dangerously-skip-permissions", "--resume", id}}); got != id {
+		t.Fatalf("claude resume target lost: %q", got)
+	}
+	if got := launchedConversation(map[string]any{"args": []any{}}); got != "" {
+		t.Fatalf("no conversation expected, got %q", got)
+	}
+}

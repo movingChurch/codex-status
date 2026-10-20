@@ -19,10 +19,31 @@ import (
 // conversationOf returns the ID a relaunch of meta resumes, or empty.
 func conversationOf(runtimeDir string, meta map[string]any, deadline time.Time) string {
 	id := strings.ToLower(engine.SessionID(runtimeDir, stringOf(meta["id"]), deadline))
+	if id == "" {
+		id = launchedConversation(meta)
+	}
 	if !uuidPattern.MatchString(id) || !conversationStored(stringOf(meta["runtime"]), stringOf(meta["home"]), stringOf(meta["cwd"]), id) {
 		return ""
 	}
 	return id
+}
+
+// launchedConversation is the conversation a window was started on, kept
+// across a relaunch whose resumed conversation has not reported itself yet.
+func launchedConversation(meta map[string]any) string {
+	if id := stringOf(meta["expected_session"]); id != "" {
+		return strings.ToLower(id)
+	}
+	args := windowArgs(meta)
+	for i, arg := range args {
+		if (arg == "--resume" || arg == "-r") && i+1 < len(args) {
+			return strings.ToLower(args[i+1])
+		}
+		if v, ok := strings.CutPrefix(arg, "--resume="); ok {
+			return strings.ToLower(v)
+		}
+	}
+	return ""
 }
 
 var projectDirChars = regexp.MustCompile(`[^A-Za-z0-9-]`)
