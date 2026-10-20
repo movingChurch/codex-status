@@ -25,6 +25,31 @@ type switchWindows struct {
 	// orphaned windows lost their tmux pane while their CLI still runs; a
 	// switch ends those processes instead of relaunching them.
 	orphaned []map[string]any
+	// conversations holds the conversation each relaunched window resumes,
+	// by run ID; a window missing from it restarts without one.
+	conversations map[string]string
+}
+
+// readConversations reads each relaunched window's conversation before any
+// process stops, at most two seconds per window.
+func (w *switchWindows) readConversations() {
+	w.conversations = map[string]string{}
+	for _, meta := range w.relaunch {
+		if id := conversationOf(w.runtimeDir, meta, time.Now().Add(2*time.Second)); id != "" {
+			w.conversations[stringOf(meta["id"])] = id
+		}
+	}
+}
+
+// fresh are the relaunched windows that restart without a conversation.
+func (w switchWindows) fresh() []map[string]any {
+	out := []map[string]any{}
+	for _, meta := range w.relaunch {
+		if w.conversations[stringOf(meta["id"])] == "" {
+			out = append(out, meta)
+		}
+	}
+	return out
 }
 
 func openWindows(kind string) switchWindows {
@@ -103,7 +128,7 @@ func (w switchWindows) forSwitch() *logins.Windows {
 		}
 		self, _ = filepath.EvalSymlinks(self)
 		for _, meta := range w.relaunch {
-			if err = relaunchWindow(self, w.runtimeDir, meta); err != nil {
+			if err = relaunchWindow(self, w.runtimeDir, meta, w.conversations[stringOf(meta["id"])]); err != nil {
 				return fmt.Errorf("relaunch of %s: %w", describeWindow(meta), err)
 			}
 		}
@@ -115,7 +140,7 @@ func (w switchWindows) forSwitch() *logins.Windows {
 // run id, in the same pane and directory and with the same environment; the
 // new runner starts its CLI once the switch ends, so it runs on the new login.
 // The conversation is not carried over.
-func relaunchWindow(self, runtimeDir string, meta map[string]any) error {
+func relaunchWindow(self, runtimeDir string, meta map[string]any, conversation string) error {
 	socket, pane, hud := stringOf(meta["tmux_socket"]), stringOf(meta["codex_pane"]), stringOf(meta["hud_pane"])
 	kind, launcher, cwd := stringOf(meta["runtime"]), stringOf(meta["launcher_executable"]), stringOf(meta["cwd"])
 	if !panePattern.MatchString(pane) || launcher == "" || cwd == "" {
@@ -138,7 +163,17 @@ func relaunchWindow(self, runtimeDir string, meta map[string]any) error {
 		}
 	}
 	words = append(words, "--")
-	words = append(words, windowArgs(meta)...)
+	args := windowArgs(meta)
+	if conversation != "" {
+		// The runner's --resume starts `codex resume <id>`; Claude Code takes it as an option.
+		args = resumeArgs(args, valueFlags(nativeHelp(launcher)))
+		if kind == "codex" {
+			words = append(words[:len(words)-1], "--resume", conversation, "--")
+		} else {
+			args = append(args, "--resume", conversation)
+		}
+	}
+	words = append(words, args...)
 	if panePattern.MatchString(hud) {
 		_, _ = tmuxCall(socket, "kill-pane", "-t", hud)
 	}
@@ -230,6 +265,7 @@ func useAccount(m *logins.Manager, kind, account string, yes bool) error {
 		fmt.Printf("Switching %s to %s; this window restarts on it.\n", kind, account)
 		return nil
 	}
+	windows.readConversations()
 	a, err := m.Use(kind, account, windows.forSwitch())
 	if err != nil {
 		return err
@@ -243,6 +279,9 @@ func useAccount(m *logins.Manager, kind, account string, yes bool) error {
 	}
 	if len(windows.orphaned) > 0 {
 		fmt.Printf("Ended, window gone: %s\n", describeWindows(windows.orphaned))
+	}
+	if fresh := windows.fresh(); len(fresh) > 0 {
+		fmt.Printf("Restarted without a conversation: %s\n", describeWindows(fresh))
 	}
 	if m.FirstUse() {
 		fmt.Fprintln(os.Stderr, termsNotice)
@@ -269,8 +308,13 @@ func accountSwitch(kind, account string) int {
 	message := ""
 	if err == nil {
 		var a logins.Account
-		if a, err = m.Use(kind, account, openWindows(kind).forSwitch()); err == nil {
+		windows := openWindows(kind)
+		windows.readConversations()
+		if a, err = m.Use(kind, account, windows.forSwitch()); err == nil {
 			message = fmt.Sprintf("%s now uses %s", kind, a.Label())
+			if fresh := len(windows.fresh()); fresh > 0 {
+				message += fmt.Sprintf("; %d window(s) restarted without a conversation", fresh)
+			}
 		}
 	}
 	if err != nil {

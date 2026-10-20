@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"io"
@@ -208,4 +209,32 @@ func renderConnection(conn net.Conn, run string, out io.Writer, width func() int
 			}
 		}
 	}
+}
+
+// SessionID reads the conversation ID the manager's snapshot of run holds,
+// waiting at most until deadline; empty when none is known by then.
+func SessionID(runtime, run string, deadline time.Time) string {
+	if !validRunID(run) {
+		return ""
+	}
+	conn, err := collectorConnectTimeout(runtime, time.Until(deadline))
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(deadline)
+	if json.NewEncoder(conn).Encode(map[string]any{"v": 1, "run": run, "format": "json", "width": 80}) != nil {
+		return ""
+	}
+	scanner := bufio.NewScanner(conn)
+	scanner.Buffer(make([]byte, 4096), maxMessage)
+	for scanner.Scan() {
+		var snapshot map[string]any
+		if json.Unmarshal(scanner.Bytes(), &snapshot) == nil {
+			if id, _ := snapshot["session_id"].(string); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
 }

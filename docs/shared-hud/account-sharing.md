@@ -48,3 +48,9 @@ Limit kept: account-level native merging stays unavailable, because no runtime r
 - With Orca's environment and an empty profile pointer, `runtime-status wrap claude` ran on `~/.claude` and `wrap codex` on `~/.codex` with `--no-daemon`; both HUDs showed the account and the Codex window never stopped at the background-server prompt.
 - HUD clicks switched Codex to `yes@holyground.world` (5H/7D used 100%/16% against 0/84 remaining in `account list --json`) and Claude to `yes@holyground.world` (7%/15% against 93/85); `account use` switched both back.
 - A Codex background server left by an earlier window held `~/.codex` and refused a switch; windows whose tmux pane is gone now have their processes ended by the switch and are named as ended.
+
+### 2026-10-20 checks of relaunch with resume
+
+- A Codex window with a one-line conversation, switched from the HUD menu, restarted as `codex --no-daemon resume <id>` on the new account and showed the same conversation.
+- A Claude switch from the HUD menu restarted a `~/.claude` window with `--resume <id>` of its stored conversation; windows without a stored conversation, including one started from inside another Claude Code session, whose transcript saving is off, restarted without one.
+- Picking an account opens a second menu, Switch or Cancel; its Switch item runs the switch.
