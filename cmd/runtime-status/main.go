@@ -311,6 +311,38 @@ func launchRuntime(kind, resume string, args []string) int {
 	}
 	return 0
 }
+// sealExecutable samples a launched process's executable across launcher
+// re-execs until it holds for two samples; a shell running a launcher script
+// is never final, since the script may resolve paths for a while before it
+// execs the CLI, so it is sampled for up to 200 intervals instead of 20.
+func sealExecutable(sample func() string, interval time.Duration) string {
+	effective := sample()
+	for i, stable := 0, 0; i < 200; i++ {
+		if !launcherShell(effective) && (stable >= 2 || i >= 20) {
+			break
+		}
+		time.Sleep(interval)
+		next := sample()
+		if next != "" && next == effective {
+			stable++
+		} else {
+			effective = next
+			stable = 0
+		}
+	}
+	return effective
+}
+
+// launcherShell reports a shell interpreter, which runs launcher scripts such
+// as Codex's bin/codex before they exec the CLI.
+func launcherShell(path string) bool {
+	switch filepath.Base(path) {
+	case "sh", "bash", "dash", "zsh", "env":
+		return true
+	}
+	return false
+}
+
 func exitCode(err error) int {
 	if err == nil {
 		return 0
@@ -461,18 +493,8 @@ func runner(o runnerOptions) int {
 		started = telemetry.ProcessIdentity(cmd.Process.Pid)
 	}
 	if started != "" {
-		effective := telemetry.ProcessExecutable(cmd.Process.Pid, started)
-		// Sample across immediate launcher re-execs before sealing the receipt.
-		for i, stable := 0, 0; i < 20 && stable < 2; i++ {
-			time.Sleep(10 * time.Millisecond)
-			next := telemetry.ProcessExecutable(cmd.Process.Pid, started)
-			if next != "" && next == effective {
-				stable++
-			} else {
-				effective = next
-				stable = 0
-			}
-		}
+		pid := cmd.Process.Pid
+		effective := sealExecutable(func() string { return telemetry.ProcessExecutable(pid, started) }, 10*time.Millisecond)
 		if effective == "" {
 			effective = o.Codex
 		}

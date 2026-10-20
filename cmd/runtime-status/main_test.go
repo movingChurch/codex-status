@@ -59,3 +59,23 @@ func TestUniqueRunID(t *testing.T) {
 		t.Fatal("invalid run identity")
 	}
 }
+
+func TestSealExecutableWaitsForLauncherScript(t *testing.T) {
+	// A launcher script holds /bin/bash for 50 samples before it execs codex.
+	samples := 0
+	sample := func() string {
+		samples++
+		if samples <= 50 {
+			return "/bin/bash"
+		}
+		return "/Applications/Codex/codex"
+	}
+	if got := sealExecutable(sample, 0); got != "/Applications/Codex/codex" {
+		t.Fatalf("sealed %q while the launcher script still ran", got)
+	}
+	samples = 0
+	direct := func() string { samples++; return "/opt/codex" }
+	if got := sealExecutable(direct, 0); got != "/opt/codex" || samples != 3 {
+		t.Fatalf("direct executable sealed as %q after %d samples", got, samples)
+	}
+}
