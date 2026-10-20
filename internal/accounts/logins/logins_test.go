@@ -468,3 +468,15 @@ func TestRealKeychainGuardedInTests(t *testing.T) {
 	}()
 	_, _ = Keychain{}.Get(VaultService, "probe")
 }
+
+func TestChunkIndex(t *testing.T) {
+	gen, count, ok := parseIndex([]byte(chunkPrefix + "a1b2c3d4:3"))
+	if !ok || gen != "a1b2c3d4" || count != 3 || chunkName("codex:x", gen, 2) != "codex:x#a1b2c3d4.2" {
+		t.Fatal("chunk index not read back", gen, count, ok)
+	}
+	for _, bad := range []string{chunkPrefix + "a1:0", chunkPrefix + "a1", chunkPrefix + "a1:x"} {
+		if _, _, ok := parseIndex([]byte(bad)); ok {
+			t.Fatal("damaged index accepted", bad)
+		}
+	}
+}
