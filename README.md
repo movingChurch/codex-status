@@ -63,6 +63,8 @@ tmux -S /tmp/runtime-status-UID/tmux.sock list-sessions
 tmux -S /tmp/runtime-status-UID/tmux.sock attach -t hud-RUN-UUID
 ```
 
+A HUD session ends when its last terminal client goes away: closing the window, or detaching manually, ends the session and its runtime.
+
 ## Accounts
 
 Codex and Claude Code can each keep several accounts and switch between them; Antigravity stays on one account.

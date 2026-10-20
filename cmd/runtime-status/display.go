@@ -3,6 +3,17 @@ package main
 // These settings belong only to this launcher's dedicated tmux server.
 // A click on the first row of a HUD pane opens the account menu of its
 // runtime; other clicks keep tmux's default.
+// sessionSettings end a HUD session once its last client goes away, so a
+// closed terminal window leaves no session, runner or server behind. A
+// client-attached hook sets the option: tmux ends every unattached session
+// that has it whenever any client detaches, which would otherwise take a new
+// session in the gap before the launcher attaches.
+func sessionSettings(session string) [][]string {
+	return [][]string{
+		{"set-hook", "-t", session, "client-attached", "set-option -t " + tmuxQuote(session) + " destroy-unattached on"},
+	}
+}
+
 func displaySettings(self string) [][]string {
 	onLabel := "#{&&:#{@runtime_status_kind},#{==:#{mouse_y},0}}"
 	menu := shellCommand([]string{self, "__account-menu"}) + " '#{@runtime_status_kind}' '#{mouse_x}' '#{client_name}' '#{pane_id}' '#{socket_path}'"

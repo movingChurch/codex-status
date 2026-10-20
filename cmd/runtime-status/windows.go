@@ -83,8 +83,16 @@ func paneAlive(meta map[string]any) bool {
 	if !panePattern.MatchString(pane) {
 		return false
 	}
-	id, err := tmuxCall(stringOf(meta["tmux_socket"]), "display-message", "-p", "-t", pane, "#{pane_id}")
-	return err == nil && id == pane
+	out, err := tmuxCall(stringOf(meta["tmux_socket"]), "display-message", "-p", "-t", pane, "#{pane_id} #{session_attached}")
+	return err == nil && paneAttached(out, pane)
+}
+
+// paneAttached reports whether a "#{pane_id} #{session_attached}" answer names
+// the pane in a session with a client; a session without one is a ghost left
+// by a closed window and counts as ended.
+func paneAttached(out, pane string) bool {
+	id, attached, ok := strings.Cut(out, " ")
+	return ok && id == pane && attached != "0"
 }
 
 func stringOf(v any) string { s, _ := v.(string); return s }

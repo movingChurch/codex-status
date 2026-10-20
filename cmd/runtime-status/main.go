@@ -285,6 +285,11 @@ func launchRuntime(kind, resume string, args []string) int {
 			return 2
 		}
 	}
+	for _, settings := range sessionSettings(sessionName) {
+		if _, err = tmuxCall(socket, settings...); err != nil {
+			return 2
+		}
+	}
 	if hud, err = splitHUD(socket, sessionName, pane, self, runtimeDir, id, kind); err != nil {
 		return 2
 	}
