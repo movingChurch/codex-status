@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/movingChurch/runtime-status/internal/engine"
+	"github.com/movingChurch/runtime-status/internal/accounts/logins"
 	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
@@ -45,6 +46,8 @@ func run(args []string) int {
 			return launchRuntime(kind, strings.ToLower(native[1]), native[2:])
 		}
 		return launchRuntime(kind, "", native)
+	case len(args) > 0 && args[0] == "account":
+		return accountCommand(args[1:])
 	case len(args) == 1 && args[0] == "install":
 		return installAll()
 	case len(args) == 1 && args[0] == "uninstall":
@@ -54,7 +57,7 @@ func run(args []string) int {
 	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback" || args[0] == "__hook"):
 		return management(args)
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
-		fmt.Println("Usage: runtime-status install|uninstall\n       runtime-status wrap codex|claude|antigravity [native arguments]\n       runtime-status [--resume UUID] [-- Codex arguments]\n       runtime-status run codex|claude|antigravity -- [native arguments]\n       runtime-status preview|doctor [runtime]\n       runtime-status setup|uninstall claude|antigravity [--settings PATH]\n\nShared three-row tmux HUD for Codex, Claude Code and Antigravity.\ninstall places the binary in ~/.local/bin, the codex, claude and agy zsh\nfunctions in ~/.zshrc and the Antigravity callback; uninstall reverses it.\n  --version     Print version\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit the native CLI normally to close its HUD.")
+		fmt.Println("Usage: runtime-status install|uninstall\n       runtime-status account list|add|use|rename|remove ...\n       runtime-status wrap codex|claude|antigravity [native arguments]\n       runtime-status [--resume UUID] [-- Codex arguments]\n       runtime-status run codex|claude|antigravity -- [native arguments]\n       runtime-status preview|doctor [runtime]\n       runtime-status setup|uninstall claude|antigravity [--settings PATH]\n\nShared three-row tmux HUD for Codex, Claude Code and Antigravity.\ninstall places the binary in ~/.local/bin, the codex, claude and agy zsh\nfunctions in ~/.zshrc and the Antigravity callback; uninstall reverses it.\n  --version     Print version\n\nScroll with the mouse wheel. Press q to leave scroll history.\nDetach with Ctrl-b d. Exit the native CLI normally to close its HUD.")
 		return 0
 	case len(args) == 1 && args[0] == "--version":
 		fmt.Println("runtime-status " + version)
@@ -208,6 +211,9 @@ func launchRuntime(kind, resume string, args []string) int {
 	native, err := runtimeExecutable(kind)
 	if err != nil {
 		return 2
+	}
+	if home, e := os.UserHomeDir(); e == nil {
+		logins.WaitSwitch(home, kind, 30*time.Second)
 	}
 	if _, err = exec.LookPath("tmux"); err != nil {
 		return 2
