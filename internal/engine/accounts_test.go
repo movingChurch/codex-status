@@ -59,3 +59,10 @@ func TestHUDFirstRowShowsSelectedAccount(t *testing.T) {
 		t.Errorf("one unchanged reading must be recorded once, got %d", len(recorded))
 	}
 }
+
+func TestHUDAccountLabelLooksLikeALink(t *testing.T) {
+	row := telemetry.Render(map[string]any{"runtime": "codex", "account": "a@example.com"}, 120, true)[0]
+	if !strings.Contains(row, "\x1b[0;4;") || !strings.Contains(row, "a@example.com ▾") {
+		t.Fatalf("label must be underlined with a menu mark: %q", row)
+	}
+}

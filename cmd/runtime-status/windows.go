@@ -376,15 +376,19 @@ func accountMenu(kind, x, client, pane, socket string) int {
 		}
 		prompt := menuText(fmt.Sprintf("Switch %s to %s? %d window(s) restart", kind, e.Label(), restarts))
 		run := shellCommand([]string{self, "__account-switch", kind, e.ID})
-		// The confirmation is a second menu, so the mouse finishes the switch.
-		confirm := "display-menu -x P -y P -T " + tmuxQuote(prompt) + " -- " + tmuxQuote("Switch") + ` "" ` + tmuxQuote("run-shell -b "+tmuxQuote(run)) + " " + tmuxQuote("Cancel") + ` "" ""`
-		args = append(args, menuText("  "+e.Label()), "", confirm)
+		args = append(args, menuText("  "+e.Label()), "", confirmMenu(prompt, run))
 	}
 	// display-menu returns only when the menu closes, so it is left running.
 	if err = exec.Command("tmux", args...).Start(); err != nil {
 		return 1
 	}
 	return 0
+}
+
+// confirmMenu is the second menu an account item opens, Switch or Cancel,
+// so the mouse finishes the switch.
+func confirmMenu(prompt, run string) string {
+	return "display-menu -x P -y P -T " + tmuxQuote(prompt) + " -- " + tmuxQuote("Switch") + ` "" ` + tmuxQuote("run-shell -b "+tmuxQuote(run)) + " " + tmuxQuote("Cancel") + ` "" ""`
 }
 
 // menuText keeps a label literal in a tmux format.
