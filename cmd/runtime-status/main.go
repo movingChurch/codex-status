@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/movingChurch/runtime-status/internal/engine"
 	"github.com/movingChurch/runtime-status/internal/accounts/logins"
+	"github.com/movingChurch/runtime-status/internal/engine"
 	"github.com/movingChurch/runtime-status/internal/telemetry"
 )
 
