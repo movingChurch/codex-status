@@ -53,4 +53,4 @@ Limit kept: account-level native merging stays unavailable, because no runtime r
 
 - A Codex window with a one-line conversation, switched from the HUD menu, restarted as `codex --no-daemon resume <id>` on the new account and showed the same conversation.
 - A Claude switch from the HUD menu restarted a `~/.claude` window with `--resume <id>` of its stored conversation; windows without a stored conversation, including one started from inside another Claude Code session, whose transcript saving is off, restarted without one.
-- Picking an account opens a second menu, Switch or Cancel; its Switch item runs the switch.
+- Picking an account in the HUD menu switches at once, with no second menu; the menu stays open while the mouse moves off it.

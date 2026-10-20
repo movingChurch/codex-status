@@ -153,7 +153,7 @@ func TestSwitchSavesRotatedLoginFirst(t *testing.T) {
 	// The open window refreshes acct-a's token after it was stored.
 	f.liveCodex(t, codexAuth("acct-a", "a@example.com", "r2"))
 	stopped := false
-	if _, err := f.m.Use("codex", "b@example.com", &Windows{Stop: func(string) error { stopped = true; return nil }}); err != nil {
+	if _, err := f.m.Use("codex", "b@example.com", &Windows{Stop: func() error { stopped = true; return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	if !stopped || f.readCodex(t).ID != "acct-b" {
@@ -492,12 +492,12 @@ func TestSwitchRelaunchesItsWindows(t *testing.T) {
 	outside := Process{PID: 22, Args: "/opt/homebrew/bin/codex", Env: map[string]string{}}
 	f.procs = []Process{window, outside}
 	stopped := false
-	windows := &Windows{Runs: []string{"run-1"}, Stop: func(string) error { stopped = true; return nil }}
+	windows := &Windows{Runs: []string{"run-1"}, Stop: func() error { stopped = true; return nil }}
 	if _, err := f.m.Use("codex", "b@example.com", windows); err == nil || stopped || !strings.Contains(err.Error(), "pid 22") || strings.Contains(err.Error(), "pid 21") {
 		t.Fatal("an outside process must refuse the switch before any window stops", err)
 	}
 	f.procs = []Process{window}
-	windows.Stop = func(string) error { stopped = true; f.procs = nil; return nil }
+	windows.Stop = func() error { stopped = true; f.procs = nil; return nil }
 	if _, err := f.m.Use("codex", "b@example.com", windows); err != nil || !stopped || f.readCodex(t).ID != "acct-b" {
 		t.Fatal("a switch must stop its own windows and go ahead", err)
 	}

@@ -10,25 +10,36 @@ import (
 
 // accountBook labels runs on a runtime's live home with the selected account
 // from accounts.json and records their quota readings against that account.
+// A run's home never changes, so whether it is live is kept by run ID.
 type accountBook struct {
-	home   string
-	record func(home, runtime string, usage logins.Usage)
-	last   map[string]string
-	at     map[string]time.Time
+	home     string
+	record   func(home, runtime string, usage logins.Usage)
+	last     map[string]string
+	at       map[string]time.Time
+	live     map[string]bool
+	selected logins.SelectedCache
 }
 
 func newAccountBook() *accountBook {
 	home, _ := os.UserHomeDir()
 	record := func(home, runtime string, usage logins.Usage) { _ = logins.RecordUsage(home, runtime, usage) }
-	return &accountBook{home: home, record: record, last: map[string]string{}, at: map[string]time.Time{}}
+	return &accountBook{home: home, record: record, last: map[string]string{}, at: map[string]time.Time{}, live: map[string]bool{}, selected: logins.SelectedCache{Home: home}}
 }
 
 func (b *accountBook) annotate(id string, meta, snapshot map[string]any, now time.Time) {
 	kind := stringValue(meta["runtime"])
-	if b.home == "" || !logins.OnLiveHome(b.home, kind, stringValue(meta["home"])) {
+	if b.home == "" {
 		return
 	}
-	label := logins.Selected(b.home, kind)
+	live, known := b.live[id]
+	if !known {
+		live = logins.OnLiveHome(b.home, kind, stringValue(meta["home"]))
+		b.live[id] = live
+	}
+	if !live {
+		return
+	}
+	label := b.selected.Label(kind)
 	if label == "" {
 		return
 	}
@@ -49,4 +60,5 @@ func (b *accountBook) annotate(id string, meta, snapshot map[string]any, now tim
 func (b *accountBook) forget(id string) {
 	delete(b.last, id)
 	delete(b.at, id)
+	delete(b.live, id)
 }

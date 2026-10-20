@@ -13,7 +13,7 @@ func TestOrcaClaudeHomeFollowsOrcaRule(t *testing.T) {
 	injected := "/orca/claude-profiles/p1/home"
 	cases := []struct {
 		name, pointerText, current, user, want string
-		set, fails                                 bool
+		set, fails                             bool
 	}{
 		{"System default", "", injected, "", "", false, false},
 		{"System default with the owner's own dir", "", injected, "/owner/claude", "/owner/claude", true, false},
@@ -55,7 +55,9 @@ func TestOrcaCodexAddsNoDaemon(t *testing.T) {
 	if got := orcaCodexArgs(nil, func(string) string { return "" }, supported); len(got) != 0 {
 		t.Error("outside Orca no flag is added")
 	}
-	isolateOff := func(k string) string { return map[string]string{"ORCA_WORKSPACE_ID": "w", "ORCA_CODEX_ISOLATE": "0"}[k] }
+	isolateOff := func(k string) string {
+		return map[string]string{"ORCA_WORKSPACE_ID": "w", "ORCA_CODEX_ISOLATE": "0"}[k]
+	}
 	if got := orcaCodexArgs(nil, isolateOff, supported); len(got) != 0 {
 		t.Error("ORCA_CODEX_ISOLATE=0 must add no flag")
 	}

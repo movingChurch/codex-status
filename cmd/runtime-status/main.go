@@ -42,8 +42,7 @@ func run(args []string) int {
 		if kind != "codex" && kind != "claude" && kind != "antigravity" {
 			return 2
 		}
-		if kind == "claude" && applyOrcaClaudeHome() != nil {
-			fmt.Fprintln(os.Stderr, "runtime-status: Orca's selected Claude profile is unreadable")
+		if !orcaReady(kind) {
 			return 2
 		}
 		if kind == "codex" && len(native) >= 2 && native[0] == "resume" && uuidPattern.MatchString(strings.ToLower(native[1])) {
@@ -61,8 +60,7 @@ func run(args []string) int {
 	case len(args) == 1 && args[0] == "uninstall":
 		return uninstallAll()
 	case len(args) >= 2 && args[0] == "wrap":
-		if args[1] == "claude" && applyOrcaClaudeHome() != nil {
-			fmt.Fprintln(os.Stderr, "runtime-status: Orca's selected Claude profile is unreadable")
+		if !orcaReady(args[1]) {
 			return 2
 		}
 		return wrapRuntime(args[1], args[2:])
@@ -216,7 +214,7 @@ func tmuxCall(socket string, args ...string) (string, error) {
 }
 func launch(resume string, args []string) int { return launchRuntime("codex", resume, args) }
 func launchRuntime(kind, resume string, args []string) int {
-	runtimeDir, err := engine.ValidateRuntime(filepath.Join("/tmp", fmt.Sprintf("runtime-status-%d", os.Getuid())))
+	runtimeDir, err := engine.ValidateRuntime(defaultRuntimeDir())
 	if err != nil {
 		return 2
 	}
@@ -466,7 +464,7 @@ func runner(o runnerOptions) int {
 	}
 	nativeArgs = append(nativeArgs, o.Args...)
 	if o.Kind == "codex" {
-		nativeArgs = orcaCodexArgs(nativeArgs, os.Getenv, codexHelp(o.Codex))
+		nativeArgs = orcaCodexArgs(nativeArgs, os.Getenv, func() string { return nativeHelp(o.Codex) })
 	}
 	if o.Kind != "codex" {
 		var prepareErr error

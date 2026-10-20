@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,22 +28,33 @@ func orcaClaudeHome(getenv func(string) string) (string, bool, error) {
 	if current != "" && current != injected && strings.TrimSuffix(current, "/") != strings.TrimSuffix(user, "/") {
 		return current, true, nil
 	}
-	if rest, ok := strings.CutPrefix(pointer, "~/"); ok {
-		pointer = filepath.Join(getenv("HOME"), rest)
+	expand := func(path string) string {
+		if rest, ok := strings.CutPrefix(path, "~/"); ok {
+			return filepath.Join(getenv("HOME"), rest)
+		}
+		return path
 	}
-	raw, _ := os.ReadFile(pointer)
-	home := strings.TrimSpace(string(raw))
+	raw, _ := os.ReadFile(expand(pointer))
+	home := expand(strings.TrimSpace(string(raw)))
 	switch {
 	case home == "" && user != "":
 		return user, true, nil
 	case home == "":
 		return "", false, nil
-	case strings.HasPrefix(home, "~/"):
-		return filepath.Join(getenv("HOME"), home[2:]), true, nil
 	case filepath.IsAbs(home):
 		return home, true, nil
 	}
 	return "", false, errors.New("the Claude profile Orca selected is not an absolute path")
+}
+
+// orcaReady applies Orca's rule before a launch of kind and reports whether
+// the launch can go on.
+func orcaReady(kind string) bool {
+	if kind != "claude" || applyOrcaClaudeHome() == nil {
+		return true
+	}
+	fmt.Fprintln(os.Stderr, "runtime-status: Orca's selected Claude profile is unreadable")
+	return false
 }
 
 // applyOrcaClaudeHome sets this process's CLAUDE_CONFIG_DIR by Orca's rule.
@@ -83,11 +95,4 @@ func orcaCodexArgs(args []string, getenv func(string) string, help func() string
 		return args
 	}
 	return append([]string{"--no-daemon"}, args...)
-}
-
-func codexHelp(native string) func() string {
-	return func() string {
-		out, _ := exec.Command(native, "--help").Output()
-		return string(out)
-	}
 }

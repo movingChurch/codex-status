@@ -16,7 +16,7 @@ import (
 // switch waits for their old processes to end. Nil means no window may be open.
 type Windows struct {
 	Runs []string
-	Stop func(runtime string) error
+	Stop func() error
 }
 
 // Use switches runtime to the named account: the live login is saved under its
@@ -107,7 +107,7 @@ func (m *Manager) clear(name string, windows *Windows) error {
 		if err := m.idle(name, windows.Runs...); err != nil {
 			return err
 		}
-		if err := windows.Stop(name); err != nil {
+		if err := windows.Stop(); err != nil {
 			return err
 		}
 		m.waitGone(windows.Runs, 10*time.Second)

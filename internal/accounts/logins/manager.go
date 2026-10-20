@@ -37,9 +37,6 @@ type Manager struct {
 	Now    func() time.Time
 }
 
-// Runtimes lists the runtimes whose logins can be switched.
-var Runtimes = []string{"codex", "claude"}
-
 // NewManager wires the real Keychain, process list and native sign-in.
 func NewManager() (*Manager, error) {
 	home, err := os.UserHomeDir()
@@ -80,6 +77,20 @@ func (m *Manager) List() ([]Entry, error) {
 	if err != nil {
 		return nil, err
 	}
+	return listEntries(meta), nil
+}
+
+// Listed returns every stored account as accounts.json under home has it,
+// read without the lock, as the HUD menu does.
+func Listed(home string) ([]Entry, error) {
+	meta, err := (&Manager{Home: home}).load()
+	if err != nil {
+		return nil, err
+	}
+	return listEntries(meta), nil
+}
+
+func listEntries(meta *metadata) []Entry {
 	entries := []Entry{}
 	for _, a := range meta.Accounts {
 		e := Entry{Account: a, Current: meta.Current[a.Runtime] == a.ID}
@@ -94,7 +105,7 @@ func (m *Manager) List() ([]Entry, error) {
 		}
 		return entries[i].Order < entries[j].Order
 	})
-	return entries, nil
+	return entries
 }
 
 // Add stores a login: the one in use with current, else a new native
@@ -354,8 +365,7 @@ func (m *Manager) usesLiveHome(name, home string) bool {
 	if home == "" || filepath.Clean(home) == m.defaultHome(name) {
 		return true
 	}
-	mirror := filepath.Join(m.Home, "Library", "Application Support", "orca", "codex-runtime-home")
-	return name == "codex" && strings.HasPrefix(filepath.Clean(home)+"/", mirror+"/")
+	return name == "codex" && strings.HasPrefix(filepath.Clean(home)+"/", orcaCodexMirror(m.Home)+"/")
 }
 
 func dedupe(items []string) []string {

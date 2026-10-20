@@ -1,6 +1,7 @@
 package logins
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -20,6 +21,30 @@ func Selected(home, runtime string) string {
 	return ""
 }
 
+// SelectedCache answers Selected for one home and reads accounts.json again
+// only after the file changed, for callers that ask every second.
+type SelectedCache struct {
+	Home   string
+	file   os.FileInfo
+	labels map[string]string
+}
+
+// Label is Selected(c.Home, runtime), from the cache while the file is the same.
+func (c *SelectedCache) Label(runtime string) string {
+	info, err := os.Stat((&Manager{Home: c.Home}).metaPath())
+	if err != nil {
+		c.file, c.labels = nil, nil
+		return ""
+	}
+	if c.file == nil || !os.SameFile(c.file, info) || !c.file.ModTime().Equal(info.ModTime()) || c.file.Size() != info.Size() {
+		c.file, c.labels = info, map[string]string{}
+		for _, name := range []string{"codex", "claude"} {
+			c.labels[name] = Selected(c.Home, name)
+		}
+	}
+	return c.labels[runtime]
+}
+
 // OnLiveHome reports whether a window's home is the one switches rewrite.
 func OnLiveHome(home, runtime, windowHome string) bool {
 	if runtime != "codex" && runtime != "claude" || windowHome == "" {
@@ -33,8 +58,13 @@ func OnLiveHome(home, runtime, windowHome string) bool {
 	}
 	window := resolve(windowHome)
 	// Orca's managed Codex System default runs on a mirror of ~/.codex.
-	mirror := filepath.Join(home, "Library", "Application Support", "orca", "codex-runtime-home", "home")
+	mirror := filepath.Join(orcaCodexMirror(home), "home")
 	return window == resolve((&Manager{Home: home}).defaultHome(runtime)) || runtime == "codex" && window == resolve(mirror)
+}
+
+// orcaCodexMirror is where Orca keeps its copy of ~/.codex.
+func orcaCodexMirror(home string) string {
+	return filepath.Join(home, "Library", "Application Support", "orca", "codex-runtime-home")
 }
 
 // RecordUsage keeps a quota reading as the last one of runtime's selected

@@ -29,7 +29,7 @@ func ghostTmux(t *testing.T) (string, func(args ...string) string) {
 	socket := filepath.Join(dir, "t.sock")
 	t.Cleanup(func() {
 		_ = exec.Command("tmux", "-S", socket, "kill-server").Run()
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	})
 	return socket, func(args ...string) string {
 		t.Helper()
@@ -45,7 +45,7 @@ func TestDetachedSessionIsNotAliveWindow(t *testing.T) {
 	socket, call := ghostTmux(t)
 	pane := call("-f", "/dev/null", "new-session", "-d", "-s", "ghost", "-P", "-F", "#{pane_id}", "sleep 30")
 	meta := map[string]any{"tmux_socket": socket, "codex_pane": pane}
-	if paneAlive(meta) {
+	if paneAlive(meta, map[string]map[string]bool{}) {
 		t.Error("a window whose session has no client must count as ended")
 	}
 }

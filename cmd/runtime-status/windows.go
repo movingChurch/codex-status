@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,14 +32,24 @@ type switchWindows struct {
 }
 
 // readConversations reads each relaunched window's conversation before any
-// process stops, at most two seconds per window.
+// process stops, all windows at once and at most two seconds in all.
 func (w *switchWindows) readConversations() {
 	w.conversations = map[string]string{}
+	deadline := time.Now().Add(2 * time.Second)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, meta := range w.relaunch {
-		if id := conversationOf(w.runtimeDir, meta, time.Now().Add(2*time.Second)); id != "" {
-			w.conversations[stringOf(meta["id"])] = id
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if id := conversationOf(w.runtimeDir, meta, deadline); id != "" {
+				mu.Lock()
+				w.conversations[stringOf(meta["id"])] = id
+				mu.Unlock()
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 // fresh are the relaunched windows that restart without a conversation.
@@ -52,19 +63,25 @@ func (w switchWindows) fresh() []map[string]any {
 	return out
 }
 
+// defaultRuntimeDir is the runtime directory of this user's windows.
+func defaultRuntimeDir() string {
+	return filepath.Join("/tmp", fmt.Sprintf("runtime-status-%d", os.Getuid()))
+}
+
 func openWindows(kind string) switchWindows {
-	w := switchWindows{runtimeDir: filepath.Join("/tmp", fmt.Sprintf("runtime-status-%d", os.Getuid()))}
+	w := switchWindows{runtimeDir: defaultRuntimeDir()}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return w
 	}
 	var own map[string]any
+	panes := map[string]map[string]bool{}
 	for _, meta := range engine.ListMetadata(w.runtimeDir) {
 		switch {
 		case meta["runtime"] != kind:
 		case !logins.OnLiveHome(home, kind, stringOf(meta["home"])):
 			w.skipped = append(w.skipped, meta)
-		case !paneAlive(meta):
+		case !paneAlive(meta, panes):
 			w.orphaned = append(w.orphaned, meta)
 		case meta["id"] == os.Getenv("RUNTIME_STATUS_RUN"):
 			own = meta
@@ -78,13 +95,25 @@ func openWindows(kind string) switchWindows {
 	return w
 }
 
-func paneAlive(meta map[string]any) bool {
+// paneAlive reads each tmux server's panes once into panes, by socket.
+func paneAlive(meta map[string]any, panes map[string]map[string]bool) bool {
 	pane := stringOf(meta["codex_pane"])
 	if !panePattern.MatchString(pane) {
 		return false
 	}
-	out, err := tmuxCall(stringOf(meta["tmux_socket"]), "display-message", "-p", "-t", pane, "#{pane_id} #{session_attached}")
-	return err == nil && paneAttached(out, pane)
+	socket := stringOf(meta["tmux_socket"])
+	alive, read := panes[socket]
+	if !read {
+		alive = map[string]bool{}
+		out, _ := tmuxCall(socket, "list-panes", "-a", "-F", "#{pane_id} #{session_attached}")
+		for _, line := range strings.Split(out, "\n") {
+			if id, _, ok := strings.Cut(line, " "); ok && paneAttached(line, id) {
+				alive[id] = true
+			}
+		}
+		panes[socket] = alive
+	}
+	return alive[pane]
 }
 
 // paneAttached reports whether a "#{pane_id} #{session_attached}" answer names
@@ -129,26 +158,62 @@ func (w switchWindows) forSwitch() *logins.Windows {
 	for _, meta := range append(append([]map[string]any{}, w.relaunch...), w.orphaned...) {
 		runs = append(runs, stringOf(meta["id"]))
 	}
-	return &logins.Windows{Runs: runs, Stop: func(string) error {
+	return &logins.Windows{Runs: runs, Stop: func() error {
 		self, err := os.Executable()
 		if err != nil {
 			return err
 		}
 		self, _ = filepath.EvalSymlinks(self)
-		for _, meta := range w.relaunch {
-			if err = relaunchWindow(self, w.runtimeDir, meta, w.conversations[stringOf(meta["id"])]); err != nil {
+		flags := &helpFlags{}
+		relaunch := func(meta map[string]any) error {
+			if err := relaunchWindow(self, w.runtimeDir, meta, w.conversations[stringOf(meta["id"])], flags); err != nil {
 				return fmt.Errorf("relaunch of %s: %w", describeWindow(meta), err)
 			}
+			return nil
 		}
-		return nil
+		// The other windows relaunch side by side, the caller's own after them.
+		others, last := w.relaunch, map[string]any(nil)
+		if w.holdsCaller() {
+			others, last = w.relaunch[:len(w.relaunch)-1], w.relaunch[len(w.relaunch)-1]
+		}
+		errs := make([]error, len(others))
+		var wg sync.WaitGroup
+		for i, meta := range others {
+			wg.Add(1)
+			go func() { defer wg.Done(); errs[i] = relaunch(meta) }()
+		}
+		wg.Wait()
+		if err = errors.Join(errs...); err != nil || last == nil {
+			return err
+		}
+		return relaunch(last)
 	}}
+}
+
+// helpFlags keeps each launcher's value options for one switch, so `--help`
+// runs once per launcher however many windows resume.
+type helpFlags struct {
+	mu    sync.Mutex
+	flags map[string]map[string]bool
+}
+
+func (h *helpFlags) of(launcher string) map[string]bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.flags == nil {
+		h.flags = map[string]map[string]bool{}
+	}
+	if _, ok := h.flags[launcher]; !ok {
+		h.flags[launcher] = valueFlags(nativeHelp(launcher))
+	}
+	return h.flags[launcher]
 }
 
 // relaunchWindow replaces a window's runner and HUD with new ones under a new
 // run id, in the same pane and directory and with the same environment; the
-// new runner starts its CLI once the switch ends, so it runs on the new login.
-// The conversation is not carried over.
-func relaunchWindow(self, runtimeDir string, meta map[string]any, conversation string) error {
+// new runner starts its CLI once the switch ends, so it runs on the new login,
+// and resumes conversation when it is not empty.
+func relaunchWindow(self, runtimeDir string, meta map[string]any, conversation string, flags *helpFlags) error {
 	socket, pane, hud := stringOf(meta["tmux_socket"]), stringOf(meta["codex_pane"]), stringOf(meta["hud_pane"])
 	kind, launcher, cwd := stringOf(meta["runtime"]), stringOf(meta["launcher_executable"]), stringOf(meta["cwd"])
 	if !panePattern.MatchString(pane) || launcher == "" || cwd == "" {
@@ -174,7 +239,7 @@ func relaunchWindow(self, runtimeDir string, meta map[string]any, conversation s
 	args := windowArgs(meta)
 	if conversation != "" {
 		// The runner's --resume starts `codex resume <id>`; Claude Code takes it as an option.
-		args = resumeArgs(args, valueFlags(nativeHelp(launcher)))
+		args = resumeArgs(args, flags.of(launcher))
 		if kind == "codex" {
 			words = append(words[:len(words)-1], "--resume", conversation, "--")
 		} else {
@@ -251,7 +316,7 @@ func useAccount(m *logins.Manager, kind, account string, yes bool) error {
 	windows := openWindows(kind)
 	if len(windows.relaunch)+len(windows.orphaned) > 0 && !yes {
 		if len(windows.relaunch) > 0 {
-			fmt.Fprintf(os.Stderr, "These %s windows restart on the new account, without their conversation: %s\n", kind, describeWindows(windows.relaunch))
+			fmt.Fprintf(os.Stderr, "These %s windows restart on the new account: %s\n", kind, describeWindows(windows.relaunch))
 		}
 		if len(windows.orphaned) > 0 {
 			fmt.Fprintf(os.Stderr, "These %s processes lost their window and end: %s\n", kind, describeWindows(windows.orphaned))
@@ -328,7 +393,7 @@ func accountSwitch(kind, account string) int {
 	if err != nil {
 		message = fmt.Sprintf("%s switch failed: %v", kind, err)
 	}
-	notify(filepath.Join("/tmp", fmt.Sprintf("runtime-status-%d", os.Getuid()), "tmux.sock"), message)
+	notify(filepath.Join(defaultRuntimeDir(), "tmux.sock"), message)
 	if err != nil {
 		return 1
 	}
@@ -357,11 +422,7 @@ func accountMenu(kind, x, client, pane, socket string) int {
 	if _, err = fmt.Sscan(x, &column); err != nil || label == "" || column >= telemetry.TextWidth(label+telemetry.AccountMark) {
 		return 0
 	}
-	m, err := logins.NewManager()
-	if err != nil {
-		return 1
-	}
-	entries, err := m.List()
+	entries, err := logins.Listed(home)
 	if err != nil {
 		notify(socket, "accounts unavailable: "+err.Error())
 		return 1
