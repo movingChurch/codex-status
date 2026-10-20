@@ -94,6 +94,12 @@ func terminalWidth() int {
 	}
 	return width
 }
+
+// ErrCollectorLost reports a render connection that ended without a stop signal.
+var ErrCollectorLost = errors.New("collector connection lost")
+
+// RenderClient streams one run's frames; a lost manager is restarted and the
+// view reconnects for as long as the native session runs.
 func RenderClient(runtime, run string) error {
 	if !validRunID(run) {
 		return errors.New("invalid run identifier")
@@ -102,14 +108,45 @@ func RenderClient(runtime, run string) error {
 	if err != nil {
 		return err
 	}
-	conn, err := collectorConnect(runtime)
-	if err != nil {
-		return err
-	}
 	notices := make(chan os.Signal, 8)
 	signal.Notify(notices, syscall.SIGWINCH, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGINT)
 	defer signal.Stop(notices)
-	return renderConnection(conn, run, os.Stdout, terminalWidth, notices)
+	backoff := 250 * time.Millisecond
+	for {
+		conn, err := collectorConnect(runtime)
+		if err == nil {
+			err = renderConnection(conn, run, os.Stdout, terminalWidth, notices)
+			if !errors.Is(err, ErrCollectorLost) {
+				return err
+			}
+			backoff = 250 * time.Millisecond
+		}
+		if !runLive(runtime, run) || !waitForRetry(notices, backoff) {
+			return nil
+		}
+		backoff = min(2*backoff, 5*time.Second)
+		_ = EnsureCollector(runtime)
+	}
+}
+func runLive(runtime, run string) bool {
+	meta, err := ReadMetadata(runtime, run)
+	return err == nil && liveMetadata(meta)
+}
+
+// waitForRetry waits out the delay; a stop signal ends the view instead.
+func waitForRetry(notices <-chan os.Signal, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-timer.C:
+			return true
+		case sig := <-notices:
+			if sig != syscall.SIGWINCH {
+				return false
+			}
+		}
+	}
 }
 func renderConnection(conn net.Conn, run string, out io.Writer, width func() int, notices <-chan os.Signal) error {
 	defer conn.Close()
@@ -159,11 +196,8 @@ func renderConnection(conn net.Conn, run string, out io.Writer, width func() int
 			if _, err := out.Write(data); err != nil {
 				return err
 			}
-		case err := <-readError:
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
+		case <-readError:
+			return ErrCollectorLost
 		case sig := <-notices:
 			if sig == syscall.SIGWINCH {
 				if err := send(false); err != nil {

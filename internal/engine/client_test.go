@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func TestClientStreamsAndResizes(t *testing.T) {
@@ -40,11 +42,32 @@ func TestClientStreamsAndResizes(t *testing.T) {
 	}
 	server.Write([]byte("fixture ANSI"))
 	server.Close()
-	if err := <-done; err != nil {
+	if err := <-done; !errors.Is(err, ErrCollectorLost) {
 		t.Fatal(err)
 	}
 	if !bytes.Contains(output.Bytes(), []byte("fixture ANSI")) || !bytes.HasSuffix(output.Bytes(), []byte("\x1b[0m\x1b[?25h")) {
 		t.Fatalf("output %q", output.String())
+	}
+}
+func TestStopSignalEndsRetryWait(t *testing.T) {
+	signals := make(chan os.Signal, 2)
+	signals <- syscall.SIGWINCH
+	signals <- syscall.SIGTERM
+	if waitForRetry(signals, time.Minute) {
+		t.Fatal("stop signal must end the reconnect wait")
+	}
+	if !waitForRetry(make(chan os.Signal), time.Millisecond) {
+		t.Fatal("elapsed delay must allow a reconnect")
+	}
+}
+func TestEndedRunIsNotReconnected(t *testing.T) {
+	root, err := os.MkdirTemp("/tmp", "engine-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+	if runLive(root, testRun) {
+		t.Fatal("run without metadata must not reconnect")
 	}
 }
 func TestEnsureExistingCollector(t *testing.T) {
