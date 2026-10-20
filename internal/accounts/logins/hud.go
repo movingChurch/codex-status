@@ -35,10 +35,15 @@ func OnLiveHome(home, runtime, windowHome string) bool {
 }
 
 // RecordUsage keeps a quota reading as the last one of runtime's selected
-// account; it skips the reading while an account command holds the lock.
+// account; it waits up to two seconds for the lock, such as one `account
+// list` holds, and skips the reading past that, as during a switch.
 func RecordUsage(home, runtime string, usage Usage) error {
 	m := &Manager{Home: home}
 	unlock, err := m.lock()
+	for wait := 0; err != nil && wait < 20; wait++ {
+		time.Sleep(100 * time.Millisecond)
+		unlock, err = m.lock()
+	}
 	if err != nil {
 		return err
 	}
