@@ -125,6 +125,16 @@ func (m *Manager) Add(name string, current bool) (Account, error) {
 		}
 	} else if login, err = m.signInFresh(name, rt); err != nil {
 		return Account{}, err
+	} else if live, liveErr := rt.live(); liveErr == nil && live.ID == login.ID {
+		// A new sign-in of the account in use also renews the live login, so
+		// a later switch does not save the stale one over it.
+		if err = rt.check(); err == nil {
+			err = rt.write(login.Data)
+		}
+		if err != nil {
+			return Account{}, err
+		}
+		current = true
 	}
 	return m.store(name, login, current)
 }

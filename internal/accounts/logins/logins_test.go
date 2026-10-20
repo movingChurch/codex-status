@@ -544,3 +544,20 @@ func TestParsePasswordForms(t *testing.T) {
 		t.Error("output without a password line accepted")
 	}
 }
+
+func TestSignInOfAccountInUseRenewsLiveLogin(t *testing.T) {
+	f := newFixture(t)
+	f.liveCodex(t, codexAuth("acct-a", "a@example.com", "expired"))
+	if _, err := f.m.Add("codex", true); err != nil {
+		t.Fatal(err)
+	}
+	f.signIn = func(_, dir string) error {
+		return os.WriteFile(filepath.Join(dir, "auth.json"), codexAuth("acct-a", "a@example.com", "fresh"), 0600)
+	}
+	if _, err := f.m.Add("codex", false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(f.readCodex(t).Data), `"fresh"`) {
+		t.Fatal("signing in again to the account in use left the stale live login")
+	}
+}
