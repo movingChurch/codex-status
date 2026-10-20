@@ -42,6 +42,10 @@ func run(args []string) int {
 		if kind != "codex" && kind != "claude" && kind != "antigravity" {
 			return 2
 		}
+		if kind == "claude" && applyOrcaClaudeHome() != nil {
+			fmt.Fprintln(os.Stderr, "runtime-status: Orca's selected Claude profile is unreadable")
+			return 2
+		}
 		if kind == "codex" && len(native) >= 2 && native[0] == "resume" && uuidPattern.MatchString(strings.ToLower(native[1])) {
 			return launchRuntime(kind, strings.ToLower(native[1]), native[2:])
 		}
@@ -57,6 +61,10 @@ func run(args []string) int {
 	case len(args) == 1 && args[0] == "uninstall":
 		return uninstallAll()
 	case len(args) >= 2 && args[0] == "wrap":
+		if args[1] == "claude" && applyOrcaClaudeHome() != nil {
+			fmt.Fprintln(os.Stderr, "runtime-status: Orca's selected Claude profile is unreadable")
+			return 2
+		}
 		return wrapRuntime(args[1], args[2:])
 	case len(args) > 0 && (args[0] == "preview" || args[0] == "doctor" || args[0] == "setup" || args[0] == "uninstall" || args[0] == "__callback" || args[0] == "__hook"):
 		return management(args)
@@ -452,6 +460,9 @@ func runner(o runnerOptions) int {
 		nativeArgs = append(nativeArgs, "resume", o.Resume)
 	}
 	nativeArgs = append(nativeArgs, o.Args...)
+	if o.Kind == "codex" {
+		nativeArgs = orcaCodexArgs(nativeArgs, os.Getenv, codexHelp(o.Codex))
+	}
 	if o.Kind != "codex" {
 		var prepareErr error
 		nativeArgs, prepareErr = prepareNative(o, nativeArgs)

@@ -80,6 +80,8 @@ runtime-status account remove codex|claude EMAIL|ALIAS
 - **Open windows:** runtime-status windows on `~/.codex` or `~/.claude` restart on the new account in their pane and directory with their launch arguments; a conversation continues only when those arguments resume it. `use` names them and asks once; `--yes` skips the question. Windows on another home, such as Orca's account homes, are left alone and named as skipped. A process of that runtime outside runtime-status that uses the same home refuses the switch.
 - **Usage:** `account list --json` reports the last 5H/7D reading the HUD observed for each account, as remaining percent.
 
+- **Orca:** in Orca's account settings, keep **System default** selected for Claude Code and for Codex (real home), so Orca terminals run on `~/.claude` and `~/.codex` and their windows show the account and switch. runtime-status follows Orca's selected Claude profile the same way Orca's own `claude` function does, and starts Codex inside Orca with `--no-daemon` as Orca does. Windows on an Orca account profile show no account label and are skipped by a switch.
+
 Rotating accounts to get around usage limits can break provider terms; runtime-status never switches on its own.
 
 ## Display

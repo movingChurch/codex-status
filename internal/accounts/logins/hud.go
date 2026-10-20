@@ -31,7 +31,10 @@ func OnLiveHome(home, runtime, windowHome string) bool {
 		}
 		return filepath.Clean(path)
 	}
-	return resolve(windowHome) == resolve((&Manager{Home: home}).defaultHome(runtime))
+	window := resolve(windowHome)
+	// Orca's managed Codex System default runs on a mirror of ~/.codex.
+	mirror := filepath.Join(home, "Library", "Application Support", "orca", "codex-runtime-home", "home")
+	return window == resolve((&Manager{Home: home}).defaultHome(runtime)) || runtime == "codex" && window == resolve(mirror)
 }
 
 // RecordUsage keeps a quota reading as the last one of runtime's selected

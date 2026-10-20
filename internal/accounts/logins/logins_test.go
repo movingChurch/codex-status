@@ -561,3 +561,11 @@ func TestSignInOfAccountInUseRenewsLiveLogin(t *testing.T) {
 		t.Fatal("signing in again to the account in use left the stale live login")
 	}
 }
+
+func TestOrcaCodexMirrorIsLiveHome(t *testing.T) {
+	home := t.TempDir()
+	mirror := filepath.Join(home, "Library", "Application Support", "orca", "codex-runtime-home", "home")
+	if !OnLiveHome(home, "codex", mirror) || OnLiveHome(home, "claude", mirror) {
+		t.Fatal("Orca's Codex mirror counts as ~/.codex for Codex only")
+	}
+}
