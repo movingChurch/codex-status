@@ -42,3 +42,9 @@ Limit kept: account-level native merging stays unavailable, because no runtime r
 - Claude HUD click: the menu switched back to `seong9115@gmail.com`, relaunched both windows, and their 5H/7D matched that account's recorded reading.
 - Windows on Orca's homes showed no label.
 - Found and fixed on the way: Keychain items with a newline read back as hex; a menu whose first item was the disabled current account was read as a flag; a stale login of the account in use is now renewed by signing in to it again.
+
+### 2026-10-20 checks of Orca windows (System default selected)
+
+- With Orca's environment and an empty profile pointer, `runtime-status wrap claude` ran on `~/.claude` and `wrap codex` on `~/.codex` with `--no-daemon`; both HUDs showed the account and the Codex window never stopped at the background-server prompt.
+- HUD clicks switched Codex to `yes@holyground.world` (5H/7D used 100%/16% against 0/84 remaining in `account list --json`) and Claude to `yes@holyground.world` (7%/15% against 93/85); `account use` switched both back.
+- A Codex background server left by an earlier window held `~/.codex` and refused a switch; windows whose tmux pane is gone now have their processes ended by the switch and are named as ended.

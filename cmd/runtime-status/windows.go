@@ -22,6 +22,9 @@ type switchWindows struct {
 	runtimeDir string
 	relaunch   []map[string]any
 	skipped    []map[string]any
+	// orphaned windows lost their tmux pane while their CLI still runs; a
+	// switch ends those processes instead of relaunching them.
+	orphaned []map[string]any
 }
 
 func openWindows(kind string) switchWindows {
@@ -36,6 +39,8 @@ func openWindows(kind string) switchWindows {
 		case meta["runtime"] != kind:
 		case !logins.OnLiveHome(home, kind, stringOf(meta["home"])):
 			w.skipped = append(w.skipped, meta)
+		case !paneAlive(meta):
+			w.orphaned = append(w.orphaned, meta)
 		case meta["id"] == os.Getenv("RUNTIME_STATUS_RUN"):
 			own = meta
 		default:
@@ -46,6 +51,15 @@ func openWindows(kind string) switchWindows {
 		w.relaunch = append(w.relaunch, own)
 	}
 	return w
+}
+
+func paneAlive(meta map[string]any) bool {
+	pane := stringOf(meta["codex_pane"])
+	if !panePattern.MatchString(pane) {
+		return false
+	}
+	id, err := tmuxCall(stringOf(meta["tmux_socket"]), "display-message", "-p", "-t", pane, "#{pane_id}")
+	return err == nil && id == pane
 }
 
 func stringOf(v any) string { s, _ := v.(string); return s }
@@ -75,11 +89,11 @@ func describeWindows(metas []map[string]any) string {
 
 // forSwitch hands the windows to the switch; nil when none is open.
 func (w switchWindows) forSwitch() *logins.Windows {
-	if len(w.relaunch) == 0 {
+	if len(w.relaunch) == 0 && len(w.orphaned) == 0 {
 		return nil
 	}
 	runs := []string{}
-	for _, meta := range w.relaunch {
+	for _, meta := range append(append([]map[string]any{}, w.relaunch...), w.orphaned...) {
 		runs = append(runs, stringOf(meta["id"]))
 	}
 	return &logins.Windows{Runs: runs, Stop: func(string) error {
@@ -192,8 +206,13 @@ func splitHUD(socket, session, pane, self, runtimeDir, id, kind string) (string,
 // once unless yes, and moves the switch out of a window it relaunches.
 func useAccount(m *logins.Manager, kind, account string, yes bool) error {
 	windows := openWindows(kind)
-	if len(windows.relaunch) > 0 && !yes {
-		fmt.Fprintf(os.Stderr, "These %s windows restart on the new account, without their conversation: %s\n", kind, describeWindows(windows.relaunch))
+	if len(windows.relaunch)+len(windows.orphaned) > 0 && !yes {
+		if len(windows.relaunch) > 0 {
+			fmt.Fprintf(os.Stderr, "These %s windows restart on the new account, without their conversation: %s\n", kind, describeWindows(windows.relaunch))
+		}
+		if len(windows.orphaned) > 0 {
+			fmt.Fprintf(os.Stderr, "These %s processes lost their window and end: %s\n", kind, describeWindows(windows.orphaned))
+		}
 		if !confirm("Switch? [y/N] ") {
 			return errors.New("switch cancelled")
 		}
@@ -221,6 +240,9 @@ func useAccount(m *logins.Manager, kind, account string, yes bool) error {
 	}
 	if len(windows.skipped) > 0 {
 		fmt.Printf("Skipped, on another home: %s\n", describeWindows(windows.skipped))
+	}
+	if len(windows.orphaned) > 0 {
+		fmt.Printf("Ended, window gone: %s\n", describeWindows(windows.orphaned))
 	}
 	if m.FirstUse() {
 		fmt.Fprintln(os.Stderr, termsNotice)
