@@ -11,7 +11,7 @@ import (
 
 const accountUsage = `Usage: runtime-status account list [--json]
        runtime-status account add codex|claude [--current]
-       runtime-status account use codex|claude EMAIL|ALIAS
+       runtime-status account use codex|claude EMAIL|ALIAS [--yes]
        runtime-status account rename codex|claude EMAIL|ALIAS NEW-ALIAS
        runtime-status account remove codex|claude EMAIL|ALIAS
 
@@ -71,15 +71,8 @@ func runAccount(m *logins.Manager, args []string) error {
 			fmt.Fprintln(os.Stderr, termsNotice)
 		}
 		return err
-	case args[0] == "use" && len(args) == 3:
-		a, err := m.Use(args[1], args[2], nil)
-		if err == nil {
-			fmt.Printf("%s now uses %s\n", a.Runtime, a.Label())
-			if m.FirstUse() {
-				fmt.Fprintln(os.Stderr, termsNotice)
-			}
-		}
-		return err
+	case args[0] == "use" && (len(args) == 3 || len(args) == 4 && args[3] == "--yes"):
+		return useAccount(m, args[1], args[2], len(args) == 4)
 	case args[0] == "rename" && len(args) == 4:
 		return m.Rename(args[1], args[2], args[3])
 	case args[0] == "remove" && len(args) == 3:

@@ -48,6 +48,10 @@ func run(args []string) int {
 		return launchRuntime(kind, "", native)
 	case len(args) > 0 && args[0] == "account":
 		return accountCommand(args[1:])
+	case len(args) == 3 && args[0] == "__account-switch":
+		return accountSwitch(args[1], args[2])
+	case len(args) == 6 && args[0] == "__account-menu":
+		return accountMenu(args[1], args[2], args[3], args[4], args[5])
 	case len(args) == 1 && args[0] == "install":
 		return installAll()
 	case len(args) == 1 && args[0] == "uninstall":
@@ -268,25 +272,16 @@ func launchRuntime(kind, resume string, args []string) int {
 			tmuxCall(socket, "kill-pane", "-t", pane)
 		}
 	}()
-	for _, settings := range displaySettings() {
+	for _, settings := range displaySettings(self) {
 		if _, err = tmuxCall(socket, settings...); err != nil {
 			return 2
 		}
 	}
-	hud, err = tmuxCall(socket, "split-window", "-v", "-d", "-l", "4", "-t", pane, "-P", "-F", "#{pane_id}", shellCommand([]string{self, "__render", runtimeDir, id}))
-	if err != nil || !panePattern.MatchString(hud) || hud == pane {
-		return 2
-	}
-	if _, err = tmuxCall(socket, "set-option", "-w", "-t", pane, "@runtime_status_hud", hud); err != nil {
+	if hud, err = splitHUD(socket, sessionName, pane, self, runtimeDir, id, kind); err != nil {
 		return 2
 	}
 	if _, err = tmuxCall(socket, "select-pane", "-t", pane); err != nil {
 		return 2
-	}
-	for _, event := range []string{"client-attached", "client-resized"} {
-		if _, err = tmuxCall(socket, "set-hook", "-t", sessionName, event, "resize-pane -t "+hud+" -y 4"); err != nil {
-			return 2
-		}
 	}
 	// Signal only after all setup succeeds: failures above never terminate a live Codex.
 	if err = relay.Wait(time.Now().Add(launchEnvironmentTimeout)); err != nil {
@@ -433,6 +428,10 @@ func runner(o runnerOptions) int {
 		}
 		defer func() { _ = os.Remove(filepath.Join(o.Runtime, "launch-"+o.Run+".json")) }()
 	}
+	// A window relaunched by an account switch starts once the new login is in place.
+	if h, e := os.UserHomeDir(); e == nil {
+		logins.WaitSwitch(h, o.Kind, time.Minute)
+	}
 	cmd := exec.Command(o.Codex, nativeArgs...)
 	cmd.Env = append(os.Environ(), "RUNTIME_STATUS_RUN="+o.Run, "RUNTIME_STATUS_RUNTIME_DIR="+o.Runtime)
 	cmd.Stdin = os.Stdin
@@ -477,7 +476,7 @@ func runner(o runnerOptions) int {
 		if effective == "" {
 			effective = o.Codex
 		}
-		meta := map[string]any{"v": 1, "runtime": o.Kind, "id": o.Run, "home": home, "cwd": cwd, "tmux_socket": o.Socket, "codex_pane": pane, "hud_pane": hud, "executable": effective, "launcher_executable": o.Codex, "launched_at": float64(time.Now().UnixMilli()) / 1000, "account_quota": nativeStartupQuota(o.Kind, nativeArgs), "pid": cmd.Process.Pid, "started": started, "auth_epoch": telemetry.AuthEpoch(home)}
+		meta := map[string]any{"v": 1, "runtime": o.Kind, "id": o.Run, "home": home, "cwd": cwd, "tmux_socket": o.Socket, "codex_pane": pane, "hud_pane": hud, "executable": effective, "launcher_executable": o.Codex, "launched_at": float64(time.Now().UnixMilli()) / 1000, "account_quota": nativeStartupQuota(o.Kind, nativeArgs), "pid": cmd.Process.Pid, "started": started, "auth_epoch": telemetry.AuthEpoch(home), "args": o.Args}
 		if o.Resume != "" {
 			meta["expected_session"] = o.Resume
 		}
@@ -498,6 +497,10 @@ func render(runtimeDir, id string) error {
 	}
 	if _, err := engine.ValidateRuntime(runtimeDir); err != nil {
 		return err
+	}
+	// A relaunched window's runner writes its metadata only after a switch ends.
+	if home, err := os.UserHomeDir(); err == nil {
+		logins.WaitSwitch(home, "", time.Minute)
 	}
 	deadline := time.Now().Add(12 * time.Second)
 	for {

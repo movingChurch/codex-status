@@ -128,9 +128,14 @@ func (k Keychain) deleteChunks(service, account string, index []byte) {
 	}
 }
 
+// get reads an item through `-g`, which marks its form: `security` prints data
+// with a non-printable byte, such as a newline, as hex and other data as text.
 func (Keychain) get(service, account string) ([]byte, error) {
 	guard()
-	out, err := exec.Command("/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-w").Output()
+	var stderr bytes.Buffer
+	cmd := exec.Command("/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-g")
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	var exit *exec.ExitError
 	if errors.As(err, &exit) && exit.ExitCode() == 44 {
 		return nil, ErrNotFound
@@ -138,7 +143,26 @@ func (Keychain) get(service, account string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("keychain read of %s refused or failed", service)
 	}
-	return bytes.TrimSuffix(out, []byte("\n")), nil
+	if data, ok := parsePassword(stderr.String()); ok {
+		return data, nil
+	}
+	return nil, fmt.Errorf("keychain item of %s is unreadable", service)
+}
+
+func parsePassword(output string) ([]byte, bool) {
+	for _, line := range strings.Split(output, "\n") {
+		value, ok := strings.CutPrefix(line, "password: ")
+		switch {
+		case !ok:
+		case strings.HasPrefix(value, "0x"):
+			digits, _, _ := strings.Cut(value[2:], " ")
+			data, err := hex.DecodeString(digits)
+			return data, err == nil
+		case len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"':
+			return []byte(value[1 : len(value)-1]), true
+		}
+	}
+	return nil, false
 }
 
 func (Keychain) set(service, account string, data []byte) error {

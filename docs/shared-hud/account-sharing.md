@@ -23,4 +23,18 @@ Only the runtime-status manager is counted; a manager left under the former name
 - Manager restart: a killed manager was restarted by the HUD view, and sessions re-registered from their run metadata without duplicate managers.
 - No account polling: collection stays on session data and callbacks; no periodic account query runs.
 
-Limit kept: account-level native merging stays unavailable, because no runtime reports which credentials a live session holds. Unverified sessions are never merged. Account switching by separate account homes, as Orca does, would give an identity source and is tracked as a separate request.
+Limit kept: account-level native merging stays unavailable, because no runtime reports which credentials a live session holds. Unverified sessions are never merged.
+
+## Account switching
+
+- One home per runtime: `~/.codex` and `~/.claude` keep one login each; `runtime-status account use` swaps that login, unlike Orca's separate account homes.
+- Vault: each stored login is a copy kept in the macOS Keychain, service `runtime-status accounts`, on this machine only; a login longer than one `security` line is split into chunk items. `security` prints an item with a non-printable byte as hex, so reads go through `find-generic-password -g`, which marks the form.
+- HUD label: the manager reads only `~/.local/state/runtime-status/accounts.json` and shows the selected account's alias, else email, for windows on `~/.codex` or `~/.claude`. The label is the selected account, not a verified per-process identity.
+- Usage: each 5H/7D reading of such a window is recorded against the selected account, when it changes and at least every five minutes, and skipped while an account command holds the lock.
+- Relaunch: a switch first checks that no process of that runtime outside runtime-status uses the home, then replaces each runtime-status window on it in place: a new runner and HUD under a new run ID, the old process ended, the native CLI started only once the new login is written.
+
+### 2026-10-20 checks with Orca running
+
+- Codex window on `~/.codex`: `account use codex yes@holyground.world --yes` rewrote `~/.codex/auth.json` to that account, relaunched the window, named a window on Orca's account home as skipped, and the relaunched HUD showed `yes@holyground.world` with 5H/7D matching `account list --json`.
+- HUD click: a click on the label opened the account menu; picking the other account and confirming switched back and relaunched the window.
+- Claude windows on Orca's profile home showed no label; a Claude window on `~/.claude` showed `seong9115@gmail.com`.

@@ -153,7 +153,7 @@ func TestSwitchSavesRotatedLoginFirst(t *testing.T) {
 	// The open window refreshes acct-a's token after it was stored.
 	f.liveCodex(t, codexAuth("acct-a", "a@example.com", "r2"))
 	stopped := false
-	if _, err := f.m.Use("codex", "b@example.com", func(string) error { stopped = true; return nil }); err != nil {
+	if _, err := f.m.Use("codex", "b@example.com", &Windows{Stop: func(string) error { stopped = true; return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	if !stopped || f.readCodex(t).ID != "acct-b" {
@@ -478,5 +478,69 @@ func TestChunkIndex(t *testing.T) {
 		if _, _, ok := parseIndex([]byte(bad)); ok {
 			t.Fatal("damaged index accepted", bad)
 		}
+	}
+}
+
+func TestSwitchRelaunchesItsWindows(t *testing.T) {
+	f := newFixture(t)
+	f.liveCodex(t, codexAuth("acct-a", "a@example.com", "r1"))
+	if _, err := f.m.Add("codex", true); err != nil {
+		t.Fatal(err)
+	}
+	f.addCodex(t, "acct-b", "b@example.com")
+	window := Process{PID: 21, Args: "/opt/homebrew/bin/codex", Env: map[string]string{runVar: "run-1"}}
+	outside := Process{PID: 22, Args: "/opt/homebrew/bin/codex", Env: map[string]string{}}
+	f.procs = []Process{window, outside}
+	stopped := false
+	windows := &Windows{Runs: []string{"run-1"}, Stop: func(string) error { stopped = true; return nil }}
+	if _, err := f.m.Use("codex", "b@example.com", windows); err == nil || stopped || !strings.Contains(err.Error(), "pid 22") || strings.Contains(err.Error(), "pid 21") {
+		t.Fatal("an outside process must refuse the switch before any window stops", err)
+	}
+	f.procs = []Process{window}
+	windows.Stop = func(string) error { stopped = true; f.procs = nil; return nil }
+	if _, err := f.m.Use("codex", "b@example.com", windows); err != nil || !stopped || f.readCodex(t).ID != "acct-b" {
+		t.Fatal("a switch must stop its own windows and go ahead", err)
+	}
+}
+
+func TestSelectedLabelAndUsage(t *testing.T) {
+	f := newFixture(t)
+	f.liveCodex(t, codexAuth("acct-a", "a@example.com", "r1"))
+	if _, err := f.m.Add("codex", true); err != nil {
+		t.Fatal(err)
+	}
+	if got := Selected(f.m.Home, "codex"); got != "a@example.com" {
+		t.Fatalf("label %q, want the email", got)
+	}
+	if err := f.m.Rename("codex", "a@example.com", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if got := Selected(f.m.Home, "codex"); got != "work" || Selected(f.m.Home, "claude") != "" {
+		t.Fatalf("label %q, want the alias", got)
+	}
+	if !OnLiveHome(f.m.Home, "codex", filepath.Join(f.m.Home, ".codex")) || OnLiveHome(f.m.Home, "codex", filepath.Join(f.m.Home, "orca", "home")) {
+		t.Fatal("only ~/.codex is the live home")
+	}
+	five := map[string]any{"remaining": 42.0}
+	if err := RecordUsage(f.m.Home, "codex", Usage{FiveHour: five}); err != nil {
+		t.Fatal(err)
+	}
+	entries, _ := f.m.List()
+	if entries[0].Usage == nil || entries[0].Usage.FiveHour.(map[string]any)["remaining"] != 42.0 || entries[0].Usage.At == "" {
+		t.Fatalf("usage not kept for the selected account: %+v", entries[0].Usage)
+	}
+}
+
+func TestParsePasswordForms(t *testing.T) {
+	for output, want := range map[string]string{
+		"keychain: \"x\"\n    \"acct\"<blob>=\"p\"\npassword: \"{\"a\":\"b c\"}\"\n": `{"a":"b c"}`,
+		"password: 0x7B0A2261223A317D  \"{\\012\"a\":1}\"\n":                         "{\n\"a\":1}",
+	} {
+		if got, ok := parsePassword(output); !ok || string(got) != want {
+			t.Errorf("parsePassword(%q) = %q, %v", output, got, ok)
+		}
+	}
+	if _, ok := parsePassword("no password line"); ok {
+		t.Error("output without a password line accepted")
 	}
 }

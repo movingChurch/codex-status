@@ -126,6 +126,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 	}()
 	clients := map[net.Conn]*subscriber{}
 	callbacks := newCallbackStore()
+	book := newAccountBook()
 	profiles := map[string]*identityProfile{}
 	identityResults := make(chan identityResult, 64)
 	profileKey := func(meta map[string]any) string {
@@ -372,10 +373,11 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					continue
 				}
 				c.runs[id] = r
+				snapshot := result.snapshots[id]
+				merge(snapshot, callbacks.snapshot(id, time.Now()))
+				book.annotate(id, r.meta, snapshot, time.Now())
 				for _, client := range clients {
 					if client.run == id {
-						snapshot := result.snapshots[id]
-						merge(snapshot, callbacks.snapshot(id, time.Now()))
 						client.send(snapshot, render)
 					}
 				}
@@ -401,6 +403,7 @@ func runServer(listener net.Listener, runtime string, c *collector, render rende
 					}
 					if !used {
 						delete(c.runs, id)
+						book.forget(id)
 						delete(callbacks.runs, id)
 						callbacks.registry.Remove(id, now)
 						delete(callbacks.scopes, id)

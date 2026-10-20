@@ -63,15 +63,34 @@ tmux -S /tmp/runtime-status-UID/tmux.sock list-sessions
 tmux -S /tmp/runtime-status-UID/tmux.sock attach -t hud-RUN-UUID
 ```
 
+## Accounts
+
+Codex and Claude Code can each keep several accounts and switch between them; Antigravity stays on one account.
+
+```sh
+runtime-status account add codex|claude [--current]
+runtime-status account list [--json]
+runtime-status account use codex|claude EMAIL|ALIAS [--yes]
+runtime-status account rename codex|claude EMAIL|ALIAS NEW-ALIAS
+runtime-status account remove codex|claude EMAIL|ALIAS
+```
+
+- **Add:** `add` opens the native sign-in in a temporary home, so the login in use stays unchanged; `--current` stores the login in use. Each login is copied into a `runtime-status accounts` item of the macOS Keychain on this machine only.
+- **Switch:** `use`, or a click on the account name at the start of the HUD's first row, which opens a menu of that runtime's accounts. `~/.codex` and `~/.claude` keep one login each, so settings, skills and history stay shared and only the login changes.
+- **Open windows:** runtime-status windows on `~/.codex` or `~/.claude` restart on the new account in their pane and directory with their launch arguments; a conversation continues only when those arguments resume it. `use` names them and asks once; `--yes` skips the question. Windows on another home, such as Orca's account homes, are left alone and named as skipped. A process of that runtime outside runtime-status that uses the same home refuses the switch.
+- **Usage:** `account list --json` reports the last 5H/7D reading the HUD observed for each account, as remaining percent.
+
+Rotating accounts to get around usage limits can break provider terms; runtime-status never switches on its own.
+
 ## Display
 
 | Row | Information |
 | --- | --- |
-| Session | Model, reasoning effort, working directory, Git branch |
+| Session | Selected account, model, reasoning effort, working directory, Git branch |
 | Capacity | Context tokens and usage, 5H/7D usage and reset countdowns |
 | Activity | Observed task state, elapsed time, cache tokens and hit rate |
 
-Bars and percentages show **used** capacity. Codex context follows its validated reserved-token calculation; other adapters prefer provider percentages. Cache hit rate is cached input divided by input tokens. Only observed quota windows or pools appear. Loading, unavailable data, known binding errors, and measured zero remain distinct.
+The account is the alias, else the email, of the account selected in `~/.local/state/runtime-status/accounts.json`, shown only for windows on `~/.codex` or `~/.claude`; the HUD never reads credentials, and a native `/login` outside runtime-status is not reflected until the next `account` command. Bars and percentages show **used** capacity. Codex context follows its validated reserved-token calculation; other adapters prefer provider percentages. Cache hit rate is cached input divided by input tokens. Only observed quota windows or pools appear. Loading, unavailable data, known binding errors, and measured zero remain distinct.
 
 Before the first prompt, Codex account quota can already appear. Until a native session identity exists, the HUD displays a ready state; Antigravity's empty startup IDs are pending. Billing estimates, aggregate agent progress, and indirect Codex resume selectors are outside the current scope.
 

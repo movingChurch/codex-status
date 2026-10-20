@@ -71,6 +71,10 @@ func renderTextWidth(s string) int {
 	}
 	return n
 }
+
+// TextWidth is the number of terminal cells s takes in the HUD.
+func TextWidth(s string) int { return renderTextWidth(renderClean(s)) }
+
 func renderWidth(parts []renderSegment) int {
 	n := 0
 	for _, p := range parts {
@@ -419,6 +423,10 @@ func Render(snapshot map[string]any, width int, color bool) []string {
 		}
 	}
 	first := []renderSegment{renderPart(model, "model")}
+	// The selected account leads the row, where a click opens its menu.
+	if account := renderClean(snapshot["account"]); account != "" && account != "—" {
+		first = append([]renderSegment{renderPart(account, "blue"), renderPart(" │ ", "label")}, first...)
+	}
 	effort := renderClean(snapshot["effort"])
 	if effort != "" && effort != "—" {
 		first = append(first, renderPart(" Effort ", "label"), renderPart(effort, "mint"))

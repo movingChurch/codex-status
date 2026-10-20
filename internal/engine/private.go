@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -161,4 +162,27 @@ func ReadMetadata(runtime, run string) (map[string]any, error) {
 		return nil, errors.New("invalid pane identity")
 	}
 	return meta, nil
+}
+
+// ListMetadata returns the metadata of every run whose process still lives.
+func ListMetadata(runtime string) []map[string]any {
+	root, err := ValidateRuntime(runtime)
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "runs"))
+	if err != nil {
+		return nil
+	}
+	metas := []map[string]any{}
+	for _, entry := range entries {
+		id, ok := strings.CutSuffix(entry.Name(), ".json")
+		if !ok || !validRunID(id) {
+			continue
+		}
+		if meta, err := ReadMetadata(runtime, id); err == nil && liveMetadata(meta) {
+			metas = append(metas, meta)
+		}
+	}
+	return metas
 }

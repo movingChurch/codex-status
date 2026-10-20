@@ -5,18 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
+	"syscall"
 	"time"
 )
 
-// Stop ends the runtime's open windows before the swap; nil means none may be
-// open, so any running process of the runtime refuses the switch.
-type Stop func(runtime string) error
+// Windows are the runtime-status windows a switch relaunches: processes of
+// those runs pass the first busy check, then Stop replaces the windows and the
+// switch waits for their old processes to end. Nil means no window may be open.
+type Windows struct {
+	Runs []string
+	Stop func(runtime string) error
+}
 
 // Use switches runtime to the named account: the live login is saved under its
 // own identity first, since tokens rotate while in use, then the chosen login
 // is written and read back.
-func (m *Manager) Use(name, account string, stop Stop) (Account, error) {
+func (m *Manager) Use(name, account string, windows *Windows) (Account, error) {
 	rt, err := m.runtime(name)
 	if err != nil {
 		return Account{}, err
@@ -57,7 +63,7 @@ func (m *Manager) Use(name, account string, stop Stop) (Account, error) {
 	if err = m.writeJournal(journal{Runtime: name, From: live.ID, To: target.ID, Phase: "stopping"}); err != nil {
 		return Account{}, err
 	}
-	if err = m.clear(name, stop); err != nil {
+	if err = m.clear(name, windows); err != nil {
 		_ = os.Remove(m.journalPath())
 		return Account{}, err
 	}
@@ -96,13 +102,21 @@ func (m *Manager) Use(name, account string, stop Stop) (Account, error) {
 	return target, os.Remove(m.journalPath())
 }
 
-func (m *Manager) clear(name string, stop Stop) error {
-	if stop != nil {
-		if err := stop(name); err != nil {
+func (m *Manager) clear(name string, windows *Windows) error {
+	if windows != nil {
+		if err := m.idle(name, windows.Runs...); err != nil {
 			return err
 		}
+		if err := windows.Stop(name); err != nil {
+			return err
+		}
+		m.waitGone(windows.Runs, 10*time.Second)
 	}
-	busy, err := m.Busy(name)
+	return m.idle(name)
+}
+
+func (m *Manager) idle(name string, runs ...string) error {
+	busy, err := m.Busy(name, runs...)
 	if err != nil {
 		return err
 	}
@@ -110,6 +124,49 @@ func (m *Manager) clear(name string, stop Stop) error {
 		return fmt.Errorf("close these first: %s", strings.Join(busy, ", "))
 	}
 	return nil
+}
+
+// waitGone waits for the processes of runs to end, then terminates and at
+// last kills those still running, so no old window refreshes during the swap.
+func (m *Manager) waitGone(runs []string, limit time.Duration) {
+	if len(runs) == 0 {
+		return
+	}
+	deadline := time.Now().Add(limit)
+	for signal := syscall.Signal(0); ; {
+		left := m.runProcesses(runs)
+		if len(left) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			switch signal {
+			case 0:
+				signal, deadline = syscall.SIGTERM, time.Now().Add(3*time.Second)
+			case syscall.SIGTERM:
+				signal, deadline = syscall.SIGKILL, time.Now().Add(2*time.Second)
+			default:
+				return
+			}
+			for _, pid := range left {
+				_ = syscall.Kill(pid, signal)
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+func (m *Manager) runProcesses(runs []string) []int {
+	processes, err := m.Processes()
+	if err != nil {
+		return nil
+	}
+	pids := []int{}
+	for _, p := range processes {
+		if p.Env != nil && slices.Contains(runs, p.Env[runVar]) {
+			pids = append(pids, p.PID)
+		}
+	}
+	return pids
 }
 
 func (m *Manager) writeJournal(j journal) error {
@@ -160,8 +217,9 @@ func (m *Manager) recover() error {
 	return os.Remove(m.journalPath())
 }
 
-// WaitSwitch holds a new launch of runtime while a switch of it runs, so no
-// window starts on the old login mid-swap; it gives up after limit.
+// WaitSwitch holds a new launch of runtime, or of any runtime when it is
+// empty, while a switch runs, so no window starts on the old login mid-swap;
+// it gives up after limit.
 func WaitSwitch(home, runtime string, limit time.Duration) {
 	path := (&Manager{Home: home}).journalPath()
 	deadline := time.Now().Add(limit)
@@ -171,7 +229,7 @@ func WaitSwitch(home, runtime string, limit time.Duration) {
 			return
 		}
 		var j journal
-		if json.Unmarshal(raw, &j) != nil || j.Runtime != runtime {
+		if json.Unmarshal(raw, &j) != nil || runtime != "" && j.Runtime != runtime {
 			return
 		}
 		time.Sleep(200 * time.Millisecond)

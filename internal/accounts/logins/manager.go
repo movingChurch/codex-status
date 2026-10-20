@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -301,10 +302,14 @@ func (m *Manager) Remove(name, account string) error {
 	return m.save(meta)
 }
 
+// runVar marks the native processes of a runtime-status window.
+const runVar = "RUNTIME_STATUS_RUN"
+
 // Busy names the processes that block a switch of runtime: those of that
 // runtime whose home is the live one, Orca's Codex mirror of it, or unknown.
-// Orca itself and windows on Orca's own account homes are left alone.
-func (m *Manager) Busy(name string) ([]string, error) {
+// Orca itself, windows on Orca's own account homes and processes of the
+// given runtime-status runs are left alone.
+func (m *Manager) Busy(name string, runs ...string) ([]string, error) {
 	processes, err := m.Processes()
 	if err != nil {
 		return nil, errors.New("process list unavailable")
@@ -315,6 +320,7 @@ func (m *Manager) Busy(name string) ([]string, error) {
 			continue
 		}
 		switch {
+		case p.Env != nil && p.Env[runVar] != "" && slices.Contains(runs, p.Env[runVar]):
 		case p.Env == nil:
 			busy = append(busy, fmt.Sprintf("%s (pid %d, home unknown)", name, p.PID))
 		case m.usesLiveHome(name, p.Env[homeVars[name]]):
@@ -435,4 +441,29 @@ func nativeSignIn(name, dir string) error {
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
+}
+
+// ProcessEnv is the environment pid started with, without the marks of its
+// runtime-status run; nil when it cannot be read.
+func ProcessEnv(pid int) []string {
+	id := strconv.Itoa(pid)
+	plain, err := runPS("-ww", "-o", "pid=,args=", "-p", id)
+	if err != nil {
+		return nil
+	}
+	full, err := runPS("-E", "-ww", "-o", "pid=,args=", "-p", id)
+	if err != nil || !strings.HasPrefix(full[pid], plain[pid]) {
+		return nil
+	}
+	env := []string{}
+	for key, value := range parseEnv(strings.TrimPrefix(full[pid], plain[pid])) {
+		if key != runVar && key != "RUNTIME_STATUS_RUNTIME_DIR" {
+			env = append(env, key+"="+value)
+		}
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	sort.Strings(env)
+	return env
 }
