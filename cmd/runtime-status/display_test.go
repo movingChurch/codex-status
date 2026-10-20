@@ -46,7 +46,7 @@ func TestOwnedTmuxScrollSettings(t *testing.T) {
 	}
 	menu := ""
 	for _, line := range strings.Split(call("list-keys", "-T", "root"), "\n") {
-		if strings.Contains(line, " MouseDown1Pane ") {
+		if strings.Contains(line, " MouseUp1Pane ") {
 			menu = line
 		}
 	}
