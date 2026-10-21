@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased (runtime-status)
+## 0.3.0-alpha.1
 
+- Keep several Codex and Claude Code accounts with `runtime-status account add|list|use|rename|remove`; logins are stored in the macOS Keychain of this machine only, and `account list --json` shows each account's usage and which one is current.
+- Switch accounts from the HUD: a click on the account name opens a menu of that runtime's accounts, and a pick switches at once.
+- Restart the runtime's open windows after a switch, each resuming the conversation it was running.
+- Support Orca terminal windows on the default `~/.codex` and `~/.claude` homes.
 - End a HUD tmux session when its last client goes away, and skip such windowless sessions when an account switch relaunches windows.
 - Rename the project from codex-status to runtime-status: command, Go module, `RUNTIME_STATUS_` environment variables, `/tmp/runtime-status-<uid>` runtime directory and `~/.local/state/runtime-status` state directory.
 - Add `runtime-status install` and `uninstall` with zsh functions for `codex`, `claude` and `agy`, and `runtime-status wrap <runtime>`.
