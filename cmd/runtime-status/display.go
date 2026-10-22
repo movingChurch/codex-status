@@ -6,10 +6,11 @@ package main
 // closed terminal window leaves no session, runner or server behind. A
 // client-attached hook sets the option: tmux ends every unattached session
 // that has it whenever any client detaches, which would otherwise take a new
-// session in the gap before the launcher attaches.
+// session in the gap before the launcher attaches. The hook sits at index 1,
+// since splitHUD sets index 0 of client-attached to resize the HUD pane.
 func sessionSettings(session string) [][]string {
 	return [][]string{
-		{"set-hook", "-t", session, "client-attached", "set-option -t " + tmuxQuote(session) + " destroy-unattached on"},
+		{"set-hook", "-t", session, "client-attached[1]", "set-option -t " + tmuxQuote(session) + " destroy-unattached on"},
 	}
 }
 

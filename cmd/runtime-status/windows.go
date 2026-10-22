@@ -302,8 +302,10 @@ func splitHUD(socket, session, pane, self, runtimeDir, id, kind string) (string,
 	if _, err = tmuxCall(socket, "set-option", "-p", "-t", hud, "@runtime_status_kind", kind); err != nil {
 		return hud, err
 	}
+	// Index 0 alone, so the cleanup hook of sessionSettings at index 1 stays;
+	// a set-hook without an index replaces every index of the hook.
 	for _, event := range []string{"client-attached", "client-resized"} {
-		if _, err = tmuxCall(socket, "set-hook", "-t", session, event, "resize-pane -t "+hud+" -y 4"); err != nil {
+		if _, err = tmuxCall(socket, "set-hook", "-t", session, event+"[0]", "resize-pane -t "+hud+" -y 4"); err != nil {
 			return hud, err
 		}
 	}

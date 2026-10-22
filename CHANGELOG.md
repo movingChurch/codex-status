@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- End a HUD tmux session when its last client goes away again: the HUD pane's resize hook had replaced the hook that turns this on, so closed windows left detached sessions running.
+
 ## 0.3.0-alpha.1
 
 - Keep several Codex and Claude Code accounts with `runtime-status account add|list|use|rename|remove`; logins are stored in the macOS Keychain of this machine only, and `account list --json` shows each account's usage and which one is current.

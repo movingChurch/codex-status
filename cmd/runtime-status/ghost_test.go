@@ -65,3 +65,25 @@ func TestSessionEndsWhenUnattachedOnlyAfterFirstClient(t *testing.T) {
 		t.Errorf("attach hook must set destroy-unattached for the session, got %s", hook)
 	}
 }
+
+// TestLaunchKeepsCleanupHook follows the launcher's order, session settings
+// and then the HUD split, which also hooks client-attached; the split must
+// keep the hook that ends the session after its last client (I-93).
+func TestLaunchKeepsCleanupHook(t *testing.T) {
+	socket, call := ghostTmux(t)
+	pane := call("-f", "/dev/null", "new-session", "-d", "-s", "hud-x", "-P", "-F", "#{pane_id}", "sleep 60")
+	for _, args := range sessionSettings("hud-x") {
+		call(args...)
+	}
+	self := filepath.Join(t.TempDir(), "render")
+	if err := os.WriteFile(self, []byte("#!/bin/sh\nsleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := splitHUD(socket, "hud-x", pane, self, t.TempDir(), "id", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	hooks := call("show-hooks", "-t", "hud-x", "client-attached")
+	if !strings.Contains(hooks, "destroy-unattached on") || !strings.Contains(hooks, "resize-pane") {
+		t.Errorf("client-attached hooks after the split = %q, want the cleanup and the resize", hooks)
+	}
+}
