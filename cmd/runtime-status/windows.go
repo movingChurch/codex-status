@@ -225,6 +225,12 @@ func relaunchWindow(self, runtimeDir string, meta map[string]any, conversation s
 	}
 	id := newID()
 	words := []string{self, "__runner", "--runtime", runtimeDir, "--run", id, "--socket", socket, "--codex", launcher, "--kind", kind}
+	// A window keeps the form it was launched with: one without a HUD pane
+	// relaunches without one, whatever the switching process's environment.
+	shown := panePattern.MatchString(hud)
+	if !shown {
+		words = append(words, "--hud", "off")
+	}
 	var relay *launchEnvironment
 	if pid, ok := meta["pid"].(float64); ok {
 		if env := logins.ProcessEnv(int(pid)); env != nil {
@@ -253,8 +259,10 @@ func relaunchWindow(self, runtimeDir string, meta map[string]any, conversation s
 	if _, err = tmuxCall(socket, "respawn-pane", "-k", "-t", pane, "-c", cwd, shellCommand(words)); err != nil {
 		return err
 	}
-	if _, err = splitHUD(socket, session, pane, self, runtimeDir, id, kind); err != nil {
-		return err
+	if shown {
+		if _, err = splitHUD(socket, session, pane, self, runtimeDir, id, kind); err != nil {
+			return err
+		}
 	}
 	if relay != nil {
 		if err = relay.Wait(time.Now().Add(launchEnvironmentTimeout)); err != nil {

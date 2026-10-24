@@ -94,3 +94,17 @@ func TestPrivateFileRejectsFIFO(t *testing.T) {
 		t.Fatal("FIFO accepted")
 	}
 }
+
+// A window drawn without HUD rows keeps hud_pane "" and stays listed, so an
+// account switch still finds it.
+func TestMetadataAcceptsWindowWithoutHUD(t *testing.T) {
+	meta := testMeta()
+	meta["hud_pane"] = ""
+	runtime := filepath.Join(t.TempDir(), "r")
+	if _, err := WriteMetadata(runtime, meta); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadMetadata(runtime, testRun); err != nil {
+		t.Fatal(err)
+	}
+}

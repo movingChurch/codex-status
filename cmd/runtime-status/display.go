@@ -31,3 +31,28 @@ func displaySettings(self string) [][]string {
 		{"bind-key", "-T", "root", "WheelDownPane", "if-shell", "-F", "-t", "=", "#{pane_in_mode}", "send-keys -M", ""},
 	}
 }
+
+// claudeHUDSetting turns the HUD of Claude Code windows off with "off"; any
+// other value, or none, keeps it.
+const claudeHUDSetting = "RUNTIME_STATUS_CLAUDE_HUD"
+
+// hudShown reports whether a window of kind draws HUD rows. A Claude Code
+// window without them still runs in its tmux session, keeps its run
+// metadata for account switches, and leaves Claude Code its own statusLine.
+func hudShown(kind string, getenv func(string) string) bool {
+	return kind != "claude" || getenv(claudeHUDSetting) != "off"
+}
+
+// prepareWindow applies the launcher's tmux settings to a new session and
+// splits the HUD under pane when shown; it returns the HUD pane or "".
+func prepareWindow(socket, session, pane, self, runtimeDir, id, kind string, shown bool) (string, error) {
+	for _, settings := range append(displaySettings(self), sessionSettings(session)...) {
+		if _, err := tmuxCall(socket, settings...); err != nil {
+			return "", err
+		}
+	}
+	if !shown {
+		return "", nil
+	}
+	return splitHUD(socket, session, pane, self, runtimeDir, id, kind)
+}

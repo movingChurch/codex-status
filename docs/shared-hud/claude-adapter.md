@@ -23,6 +23,10 @@ Verified against Claude Code 2.1.304 in an isolated runtime directory with a liv
 - Live capture: Working during a tool call, then Complete, then Waiting after the idle prompt; `Cached 52k Hit rate 99.7%`, context, 5H and 7D rows present.
 - Limit: a user interrupt fires no hook, so Working remains until the next event. A running manager without the `hook-activity` capability ignores hook events until it is replaced.
 
+## Without HUD rows
+
+`RUNTIME_STATUS_CLAUDE_HUD=off` in the launching environment leaves the HUD out of Claude Code windows, for a Claude Code statusline that draws the session itself. The window still runs in its `hud-<id>` tmux session with the cleanup hook and writes run metadata with an empty `hud_pane`, so `account use` and the HUD menu of other windows list and relaunch it. No HUD pane is split, and the runner passes the native arguments unchanged: no statusLine override, no activity hooks and no merged settings file, since only the HUD reads them. A relaunch after an account switch keeps the form the window was opened with. Codex and Antigravity windows ignore the setting. Covered by synthetic tests; no live Claude Code session was checked.
+
 ## Acceptance
 
 - Actual native startup with per-launch settings, empty setting sources and strict empty MCP produced one accepted candidate frame with zero rejections. No model prompt was submitted in that Claude probe; context and quotas were absent and remained pending.

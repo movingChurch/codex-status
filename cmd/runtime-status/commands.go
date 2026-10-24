@@ -250,6 +250,11 @@ func uninstallAll() int {
 	return 0
 }
 func prepareNative(o runnerOptions, args []string) ([]string, error) {
+	// Without HUD rows nothing reads the callback or the activity hooks, so
+	// Claude Code keeps its own statusLine and settings untouched.
+	if o.Kind == "claude" && o.HUD == "off" {
+		return args, nil
+	}
 	value, err := statusLine(o.Kind)
 	if err != nil {
 		return nil, err
