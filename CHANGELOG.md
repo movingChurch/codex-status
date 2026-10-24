@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Leave the HUD rows out of Claude Code windows with `RUNTIME_STATUS_CLAUDE_HUD=off`, for a Claude Code statusline that shows the session itself: the window keeps its tmux session, run metadata, account switch relaunch and session cleanup, gets no statusLine override or activity hooks, and relaunches after a switch in the form it was opened with. Codex and Antigravity windows are unchanged.
 - End a HUD tmux session when its last client goes away again: the HUD pane's resize hook had replaced the hook that turns this on, so closed windows left detached sessions running.
 
 ## 0.3.0-alpha.1
