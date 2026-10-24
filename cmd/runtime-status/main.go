@@ -245,6 +245,10 @@ func launchRuntime(kind, resume string, args []string) int {
 	}
 	words := []string{self, "__runner", "--runtime", runtimeDir, "--run", id, "--socket", socket, "--codex", native}
 	words = append(words, "--kind", kind)
+	shown := hudShown(kind, os.Getenv)
+	if !shown {
+		words = append(words, "--hud", "off")
+	}
 	words = append(words, "--environment", "relay")
 	if resume != "" {
 		words = append(words, "--resume", resume)
@@ -278,17 +282,7 @@ func launchRuntime(kind, resume string, args []string) int {
 			tmuxCall(socket, "kill-pane", "-t", pane)
 		}
 	}()
-	for _, settings := range displaySettings(self) {
-		if _, err = tmuxCall(socket, settings...); err != nil {
-			return 2
-		}
-	}
-	for _, settings := range sessionSettings(sessionName) {
-		if _, err = tmuxCall(socket, settings...); err != nil {
-			return 2
-		}
-	}
-	if hud, err = splitHUD(socket, sessionName, pane, self, runtimeDir, id, kind); err != nil {
+	if hud, err = prepareWindow(socket, sessionName, pane, self, runtimeDir, id, kind, shown); err != nil {
 		return 2
 	}
 	if _, err = tmuxCall(socket, "select-pane", "-t", pane); err != nil {
@@ -372,13 +366,15 @@ type runnerOptions struct {
 	Runtime, Run, Socket, Codex, Resume string
 	Kind                                string
 	Environment                         string
-	Args                                []string
+	// HUD is "off" for a Claude Code window drawn without HUD rows.
+	HUD  string
+	Args []string
 }
 
 func parseRunner(args []string) (runnerOptions, error) {
 	var o runnerOptions
 	o.Kind = "codex"
-	fields := map[string]*string{"--runtime": &o.Runtime, "--run": &o.Run, "--socket": &o.Socket, "--codex": &o.Codex, "--resume": &o.Resume, "--kind": &o.Kind, "--environment": &o.Environment}
+	fields := map[string]*string{"--runtime": &o.Runtime, "--run": &o.Run, "--socket": &o.Socket, "--codex": &o.Codex, "--resume": &o.Resume, "--kind": &o.Kind, "--environment": &o.Environment, "--hud": &o.HUD}
 	seen := map[string]bool{}
 	for len(args) > 0 {
 		if args[0] == "--" {
@@ -393,7 +389,7 @@ func parseRunner(args []string) (runnerOptions, error) {
 		*p = args[1]
 		args = args[2:]
 	}
-	if !uuidPattern.MatchString(o.Run) || !filepath.IsAbs(o.Runtime) || !filepath.IsAbs(o.Codex) || !ownedSocket(o) || (o.Resume != "" && !uuidPattern.MatchString(o.Resume)) || (o.Kind != "codex" && o.Kind != "claude" && o.Kind != "antigravity") || (o.Environment != "" && o.Environment != "relay") {
+	if !uuidPattern.MatchString(o.Run) || !filepath.IsAbs(o.Runtime) || !filepath.IsAbs(o.Codex) || !ownedSocket(o) || (o.Resume != "" && !uuidPattern.MatchString(o.Resume)) || (o.Kind != "codex" && o.Kind != "claude" && o.Kind != "antigravity") || (o.Environment != "" && o.Environment != "relay") || (o.HUD != "" && (o.HUD != "off" || o.Kind != "claude")) {
 		return o, errArguments
 	}
 	return o, nil
@@ -422,11 +418,16 @@ func runner(o runnerOptions) int {
 	if _, err := tmuxCall(o.Socket, "wait-for", "ready-"+o.Run); err != nil {
 		return 2
 	}
-	hud, err := tmuxCall(o.Socket, "show-options", "-wqv", "-t", pane, "@runtime_status_hud")
-	if err != nil || !panePattern.MatchString(hud) || hud == pane {
-		return 2
+	// A window without HUD rows has no HUD pane; its metadata keeps hud_pane "".
+	hud := ""
+	if o.HUD != "off" {
+		var err error
+		hud, err = tmuxCall(o.Socket, "show-options", "-wqv", "-t", pane, "@runtime_status_hud")
+		if err != nil || !panePattern.MatchString(hud) || hud == pane {
+			return 2
+		}
+		defer cleanupHUD(o, pane, hud)
 	}
-	defer cleanupHUD(o, pane, hud)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return 2

@@ -157,8 +157,9 @@ func ReadMetadata(runtime, run string) (map[string]any, error) {
 	if stamp, ok := meta["launched_at"].(float64); !ok || math.IsNaN(stamp) || math.IsInf(stamp, 0) {
 		return nil, errors.New("invalid launch time")
 	}
+	// An empty hud_pane is a window drawn without HUD rows.
 	pane, ok := meta["hud_pane"].(string)
-	if !ok || len(pane) == 0 || pane[0] != '%' {
+	if !ok || (len(pane) > 0 && pane[0] != '%') {
 		return nil, errors.New("invalid pane identity")
 	}
 	return meta, nil
