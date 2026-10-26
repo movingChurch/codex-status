@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,16 +19,48 @@ import (
 // the runtime has that conversation stored, since a resume of an unknown ID
 // ends the CLI at once.
 
-// conversationOf returns the ID a relaunch of meta resumes, or empty.
-func conversationOf(runtimeDir string, meta map[string]any, deadline time.Time) string {
-	id := strings.ToLower(engine.SessionID(runtimeDir, stringOf(meta["id"]), deadline))
-	if id == "" {
-		id = launchedConversation(meta)
+// conversationOf returns the ID a relaunch of meta resumes, or empty, and
+// where it was read. A Claude Code window is asked first through the session
+// file its process keeps, since that follows /resume and /clear and exists
+// whether or not the window draws HUD rows; the manager's snapshot holds a
+// conversation only while its statusLine reports the one it was bound to.
+func conversationOf(runtimeDir string, meta map[string]any, deadline time.Time) (string, string) {
+	kind, home, cwd := stringOf(meta["runtime"]), stringOf(meta["home"]), stringOf(meta["cwd"])
+	stored := func(id string) bool { return uuidPattern.MatchString(id) && conversationStored(kind, home, cwd, id) }
+	if pid, ok := meta["pid"].(float64); ok && kind == "claude" {
+		if id := claudeSessionOf(home, int(pid)); stored(id) {
+			return id, "claude-session"
+		}
 	}
-	if !uuidPattern.MatchString(id) || !conversationStored(stringOf(meta["runtime"]), stringOf(meta["home"]), stringOf(meta["cwd"]), id) {
+	if id := strings.ToLower(engine.SessionID(runtimeDir, stringOf(meta["id"]), deadline)); stored(id) {
+		return id, "manager"
+	}
+	if id := launchedConversation(meta); stored(id) {
+		return id, "launch-args"
+	}
+	return "", "none"
+}
+
+// claudeSessionOf reads the conversation Claude Code names in
+// `<config dir>/sessions/<pid>.json`, which its process rewrites whenever it
+// moves to another conversation; a file of another process counts as none.
+func claudeSessionOf(home string, pid int) string {
+	if home == "" || pid < 1 {
 		return ""
 	}
-	return id
+	file, err := os.Open(filepath.Join(home, "sessions", strconv.Itoa(pid)+".json"))
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = file.Close() }()
+	var session struct {
+		PID       int    `json:"pid"`
+		SessionID string `json:"sessionId"`
+	}
+	if json.NewDecoder(io.LimitReader(file, 64<<10)).Decode(&session) != nil || session.PID != pid {
+		return ""
+	}
+	return strings.ToLower(session.SessionID)
 }
 
 // launchedConversation is the conversation a window was started on, kept

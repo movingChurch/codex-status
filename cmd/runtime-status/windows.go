@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/movingChurch/runtime-status/internal/accounts/logins"
@@ -27,14 +26,16 @@ type switchWindows struct {
 	// switch ends those processes instead of relaunching them.
 	orphaned []map[string]any
 	// conversations holds the conversation each relaunched window resumes,
-	// by run ID; a window missing from it restarts without one.
+	// by run ID; a window missing from it restarts without one. sources
+	// names where each window's conversation was read, for the switch log.
 	conversations map[string]string
+	sources       map[string]string
 }
 
 // readConversations reads each relaunched window's conversation before any
 // process stops, all windows at once and at most two seconds in all.
 func (w *switchWindows) readConversations() {
-	w.conversations = map[string]string{}
+	w.conversations, w.sources = map[string]string{}, map[string]string{}
 	deadline := time.Now().Add(2 * time.Second)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -42,10 +43,12 @@ func (w *switchWindows) readConversations() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if id := conversationOf(w.runtimeDir, meta, deadline); id != "" {
-				mu.Lock()
+			id, source := conversationOf(w.runtimeDir, meta, deadline)
+			mu.Lock()
+			defer mu.Unlock()
+			w.sources[stringOf(meta["id"])] = source
+			if id != "" {
 				w.conversations[stringOf(meta["id"])] = id
-				mu.Unlock()
 			}
 		}()
 	}
@@ -340,16 +343,18 @@ func useAccount(m *logins.Manager, kind, account string, yes bool) error {
 		if err != nil {
 			return err
 		}
-		cmd := exec.Command(self, "__account-switch", kind, account)
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-		if err = cmd.Start(); err != nil {
+		if err = startDetachedSwitch(windows.runtimeDir, self, kind, account); err != nil {
 			return err
 		}
 		fmt.Printf("Switching %s to %s; this window restarts on it.\n", kind, account)
 		return nil
 	}
 	windows.readConversations()
+	logged := openSwitchLog(windows.runtimeDir)
+	defer logged.Close()
+	logged.windows(kind, windows)
 	a, err := m.Use(kind, account, windows.forSwitch())
+	logged.result(err)
 	if err != nil {
 		return err
 	}
@@ -393,7 +398,12 @@ func accountSwitch(kind, account string) int {
 		var a logins.Account
 		windows := openWindows(kind)
 		windows.readConversations()
-		if a, err = m.Use(kind, account, windows.forSwitch()); err == nil {
+		logged := openSwitchLog(windows.runtimeDir)
+		defer logged.Close()
+		logged.windows(kind, windows)
+		a, err = m.Use(kind, account, windows.forSwitch())
+		logged.result(err)
+		if err == nil {
 			message = fmt.Sprintf("%s now uses %s", kind, a.Label())
 			if fresh := len(windows.fresh()); fresh > 0 {
 				message += fmt.Sprintf("; %d window(s) restarted without a conversation", fresh)
