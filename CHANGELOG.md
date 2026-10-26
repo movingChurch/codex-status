@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Resume each Claude Code window's conversation after an account switch from the session file Claude Code keeps per process, so windows without HUD rows and windows moved to another conversation with `/resume` or `/clear` no longer restart empty; the manager's snapshot and the launch arguments remain the fallbacks.
+- Keep a switch log, `switch.log` in the runtime directory, naming the windows a switch relaunched, where each conversation was read and how the switch ended, with no e-mail address; a switch started from inside a window it relaunches writes its output there instead of the caller's pipes.
 - Leave the HUD rows out of Claude Code windows with `RUNTIME_STATUS_CLAUDE_HUD=off`, for a Claude Code statusline that shows the session itself: the window keeps its tmux session, run metadata, account switch relaunch and session cleanup, gets no statusLine override or activity hooks, and relaunches after a switch in the form it was opened with. Codex and Antigravity windows are unchanged.
 - End a HUD tmux session when its last client goes away again: the HUD pane's resize hook had replaced the hook that turns this on, so closed windows left detached sessions running.
 
